@@ -3,6 +3,7 @@ set -e
 SELFDIR=$(dirname "$(realpath "$0")")
 ROOTDIR=$(realpath "${SELFDIR}/../..")
 XFELL="${SELFDIR}/bin/xfel"
+SUNXIFEL="${SELFDIR}/bin/sunxi-fel"
 IMAGE="${1:-${ROOTDIR}/output/images/sysimage-nor.img}"
 
 [ -f "${IMAGE}" ] || {
@@ -18,6 +19,5 @@ until "${XFELL}" version 2>/dev/null | grep -q "AWUSBFEX"; do
 done
 echo " Gotcha!"
 
-"${XFELL}" spinor erase 0x0 0x1000000
-"${XFELL}" spinor write 0x0 "${IMAGE}"
+"${SUNXIFEL}" -p spiflash-write 0 "${IMAGE}"
 "${XFELL}" reset

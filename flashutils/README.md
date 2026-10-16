@@ -7,11 +7,13 @@
 ## Bundled tools
 Prebuilt tools are tracked in this repository, a fresh clone can flash without
 building anything:
-- Linux x86-64: `linux/bin/xfel`, `linux/bin/sunxi-fel`, `linux/bin/mksunxi`
-- Windows x86: `windows/bin/xfel.exe`, `windows/bin/sunxi-fel.exe`, `windows/bin/mksunxi.exe`
+- Linux x86-64: `linux/bin/sunxi-fel` (SPI NOR writer), `linux/bin/xfel`
+  (detect/NAND/reset), `linux/bin/mksunxi`
+- Windows x86: `windows/bin/sunxi-fel.exe`, `windows/bin/xfel.exe`, `windows/bin/mksunxi.exe`
 - Origin: `QF1cx00s_Project/tools` (xfel v1.3.2, MIT; sunxi-fel `f1c100s-spiflash`
   branch, GPL-2.0+; mksunxi vendor SDK tool, only used to add the eGON.BT0
   header to a raw firmware bin)
+- 中文指南: [README.zh.md](README.zh.md)
 
 ## Helper script
 - fel-nor-all.sh/bat: Write the whole SPI-NOR image (`sysimage-nor.img`) via FEL
@@ -20,7 +22,7 @@ building anything:
 - fel-linux.sh/bat: Run the whole firmware in RAM by FEL mode.
 - dfu-nand-all.sh/bat: Flash SPI-NAND by DFU mode.
 - dfu-nor-all.sh/bat: Flash SPI-NOR by DFU mode.
-- dfu-nand-all.sh/bat: Flash MMC Device by DFU mode.
+- dfu-mmc-all.sh/bat: Flash MMC Device by DFU mode.
 ### Dangerous script
 - flash-mmc-flasher.sh: Create a TF card for flashing SPI NOR/NAND to **/dev/sdb**
 - flash-mmc-all.sh: Flash sysimage-sdcard.img to **/dev/sdb**
@@ -37,7 +39,10 @@ building anything:
   any SD card first). A device without a valid bootloader enters FEL
   automatically.
 - Linux: `./linux/fel-nor-all.sh`, Windows: `windows\fel-nor-all.bat`
-- See [linux/README.md](linux/README.md) for manual commands and details.
+- Manual (same usage as QF1cx00s_Project):
+  `./linux/bin/sunxi-fel -p spiflash-write 0 output/images/sysimage-nor.img`
+- See [linux/README.md](linux/README.md) for manual commands and details,
+  中文指南见 [README.zh.md](README.zh.md).
 
 ## Known Issues
 - Flashing NAND target may report error message, mostly can ignore.

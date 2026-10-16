@@ -35,8 +35,16 @@ From the repository root:
 ./flashutils/linux/fel-nor-all.sh          # optional argument: image path
 ```
 
-The script waits for the FEL device, erases the whole flash and writes
-`output/images/sysimage-nor.img` (16MB). Manual equivalent:
+The script waits for the FEL device, writes `output/images/sysimage-nor.img`
+(16MB, sunxi-fel erases internally) and resets the device. Manual equivalent
+(same usage as `QF1cx00s_Project/build.sh`):
+
+```shell
+./flashutils/linux/bin/sunxi-fel -p spiflash-write 0 output/images/sysimage-nor.img
+./flashutils/linux/bin/xfel reset
+```
+
+Equivalent xfel writer (explicit erase, then write):
 
 ```shell
 ./flashutils/linux/bin/xfel spinor erase 0x0 0x1000000
@@ -44,10 +52,18 @@ The script waits for the FEL device, erases the whole flash and writes
 ./flashutils/linux/bin/xfel reset
 ```
 
-Alternative writer:
+## Other FEL usages (QF1cx00s_Project compatible)
+SPI NAND, bare program (same as `build.sh flash nand`):
 
 ```shell
-./flashutils/linux/bin/sunxi-fel -p spiflash-write 0 output/images/sysimage-nor.img
+./flashutils/linux/bin/xfel spinand splwrite 1024 0x40000 firmware.bin
+./flashutils/linux/bin/xfel reset
+```
+
+Add the eGON.BT0 boot header to a raw firmware bin (in place):
+
+```shell
+./flashutils/linux/bin/mksunxi firmware.bin
 ```
 
 ## Install dfu-util from apt repository

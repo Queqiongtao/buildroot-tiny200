@@ -58,6 +58,7 @@ written directly through FEL mode (prebuilt tools are bundled):
 ```shell
 ./flashutils/linux/fel-nor-all.sh
 ```
+中文烧录指南见 [flashutils/README.zh.md](flashutils/README.zh.md)。
 
 ## Helper Scripts
 - rebuild-uboot.sh: Recompile U-Boot when you direct edit U-Boot sourcecode.
