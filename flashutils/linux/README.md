@@ -1,12 +1,53 @@
 # F1C100s/200s Linux Flash tools
 
-## Build sunxi-tools from source
+## Bundled FEL tools (recommended, no build required)
+- `bin/xfel` - xfel v1.3.2 (MIT), https://github.com/xboot/xfel
+  Detect/erase/read/write SPI NOR and SPI NAND in FEL mode, reset the device.
+- `bin/sunxi-fel` - sunxi-fel from Icenowy/sunxi-tools `f1c100s-spiflash` branch (GPL-2.0+)
+  SPI flash read/write in FEL mode (`spiflash-info`, `spiflash-read`, `spiflash-write`).
+- `bin/mksunxi` - add the eGON.BT0 boot header to a raw firmware bin (vendor SDK tool,
+  only needed when building a bootable image from a bare `.bin` by hand).
+
+The bundled Linux binaries are x86-64 and need the libusb-1.0 runtime
+(`libusb-1.0-0`), which is normally already installed (dfu-util depends on it).
+All tools are tracked in this repository, so a fresh clone can flash without
+building anything.
+
+## Enter FEL mode
+- Board with a working U-Boot: interrupt autoboot from the serial console
+  (hold a key while resetting, `CONFIG_BOOTDELAY=0` still checks for a pending
+  key), then erase the bootloader area so the BootROM falls back to FEL:
+  ```
+  => sf probe
+  => sf erase 0x0 0x80000
+  => reset
+  ```
+  Remove any SD card first. This is safe: the BootROM FEL is in on-chip ROM,
+  a board with a broken/blank bootloader always powers up into FEL.
+- Board without a valid bootloader: powers up into FEL automatically
+  (USB ID `1f3a:efe8`).
+- Hardware alternative: short the SPI flash pins while powering up.
+
+## Flash SPI-NOR via FEL
+From the repository root:
+
 ```shell
-sudo apt install pkg-config zlib1g-dev libusb-dev libusb-1.0-0-dev
-git clone https://github.com/Icenowy/sunxi-tools.git -b f1c100s-spiflash
-cd sunxi-tools
-make 
-sudo make install
+./flashutils/linux/fel-nor-all.sh          # optional argument: image path
+```
+
+The script waits for the FEL device, erases the whole flash and writes
+`output/images/sysimage-nor.img` (16MB). Manual equivalent:
+
+```shell
+./flashutils/linux/bin/xfel spinor erase 0x0 0x1000000
+./flashutils/linux/bin/xfel spinor write 0x0 output/images/sysimage-nor.img
+./flashutils/linux/bin/xfel reset
+```
+
+Alternative writer:
+
+```shell
+./flashutils/linux/bin/sunxi-fel -p spiflash-write 0 output/images/sysimage-nor.img
 ```
 
 ## Install dfu-util from apt repository
@@ -15,12 +56,18 @@ sudo apt install dfu-util
 ```
 
 ## Add udev rules for download gadget
+A ready-to-use copy lives in this directory:
+```shell
+sudo cp 99-allwinnerdl.rules /etc/udev/rules.d/
 ```
-ACTION!="add", SUBSYSTEM!="usb_device", GOTO="rules_end"
+The file grants access to the FEL gadget (`1f3a:efe8`) and the U-Boot DFU
+gadget (`1f3a:1010`).
 
-ATTR{idProduct}=="efe8", ATTR{idVendor}=="1f3a", MODE="666"
-ATTR{idProduct}=="1010", ATTR{idVendor}=="1f3a", MODE="666"
-
-LABEL="rules_end"
+## Build tools from source (optional)
+```shell
+sudo apt install pkg-config zlib1g-dev libusb-dev libusb-1.0-0-dev
+git clone https://github.com/Icenowy/sunxi-tools.git -b f1c100s-spiflash
+cd sunxi-tools
+make
+sudo make install
 ```
-Save file as /etc/udev/rules.d/99-allwinnerdl.rules

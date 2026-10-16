@@ -53,6 +53,12 @@ or buy a powerful PC for yourself.
 You can flash a board by Linux (Recommended) or Windows system.
 ### [Here is the manual.](flashutils/README.md)
 
+For SPI-NOR boards without a working bootloader/DFU, the full image can be
+written directly through FEL mode (prebuilt tools are bundled):
+```shell
+./flashutils/linux/fel-nor-all.sh
+```
+
 ## Helper Scripts
 - rebuild-uboot.sh: Recompile U-Boot when you direct edit U-Boot sourcecode.
 - rebuild-kernel.sh: Recompile Kernel when you direct edit Kernel sourcecode.
