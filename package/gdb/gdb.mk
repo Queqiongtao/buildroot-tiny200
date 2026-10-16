@@ -37,6 +37,11 @@ endif
 # also need ncurses.
 HOST_GDB_DEPENDENCIES = host-expat host-ncurses
 
+# GCC 10 defaults to -fno-common, which breaks the simulator shipped
+# with the old gdb versions used by this buildroot.
+HOST_GDB_CONF_ENV += CFLAGS="$(HOST_CFLAGS) -fcommon"
+HOST_GDB_MAKE_ENV += CFLAGS="$(HOST_CFLAGS) -fcommon"
+
 # Disable building documentation
 GDB_MAKE_OPTS += MAKEINFO=true
 GDB_INSTALL_TARGET_OPTS += MAKEINFO=true DESTDIR=$(TARGET_DIR) install

@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Codex <codex@localhost>
+Date: Thu, 1 Jan 1970 00:00:00 +0000
+Subject: [PATCH] define _STAT_VER on glibc >= 2.33
+
+glibc 2.33 removed _STAT_VER from its public headers while keeping the
+legacy __xstat/__lxstat/__fxstat symbols for ABI compatibility. Define
+it as 0 so host fakeroot still builds on newer host distributions.
+
+Signed-off-by: Codex <codex@localhost>
+---
+ libfakeroot.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/libfakeroot.c b/libfakeroot.c
+index b3d7e1f..c4d8e2a 100644
+--- a/libfakeroot.c
++++ b/libfakeroot.c
+@@ -32,3 +32,7 @@
+ #define _GNU_SOURCE
+ 
++#ifndef _STAT_VER
++# define _STAT_VER 0
++#endif
++
+ #define FAKEROOT_LIBFAKEROOT
+-- 
+2.34.1

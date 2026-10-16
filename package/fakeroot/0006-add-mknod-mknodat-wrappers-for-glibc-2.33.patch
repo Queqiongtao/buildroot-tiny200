@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Codex <codex@localhost>
+Date: Thu, 1 Jan 1970 00:00:00 +0000
+Subject: [PATCH] add mknod/mknodat wrappers for glibc >= 2.33
+
+glibc 2.33 exports mknod as a weak alias for mknodat, so wrapping only
+__xmknod/__xmknodat is no longer enough. Export plain mknod and mknodat
+wrappers that forward to the existing fakeroot implementations.
+
+Signed-off-by: Codex <codex@localhost>
+---
+ libfakeroot.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/libfakeroot.c b/libfakeroot.c
+index c4d8e2a..e7f1a3b 100644
+--- a/libfakeroot.c
++++ b/libfakeroot.c
+@@ -1414,3 +1414,15 @@
+ #endif /* FAKEROOT_FAKENET */
+ 
++#ifdef __GLIBC__
++int mknod(const char *pathname, mode_t mode, dev_t dev) {
++  return WRAP_MKNOD MKNOD_ARG(_STAT_VER, pathname, mode, dev);
++}
++
++#if defined(HAVE_FSTATAT) && defined(HAVE_MKNODAT)
++int mknodat(int dir_fd, const char *pathname, mode_t mode, dev_t dev) {
++  return WRAP_MKNODAT MKNODAT_ARG(_STAT_VER, dir_fd, pathname, mode, dev);
++}
++#endif
++#endif
++
+ #ifdef __APPLE__
+-- 
+2.34.1

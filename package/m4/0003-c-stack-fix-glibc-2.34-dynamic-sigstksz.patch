@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Codex <codex@localhost>
+Date: Thu, 1 Jan 1970 00:00:00 +0000
+Subject: [PATCH] c-stack: avoid SIGSTKSZ in preprocessor on glibc >= 2.34
+
+glibc 2.34 and newer may define SIGSTKSZ as sysconf(_SC_SIGSTKSZ), which
+cannot be used in a preprocessor comparison. Force a numeric SIGSTKSZ so
+that the alternate signal stack in c-stack.c is a compile-time constant.
+
+Signed-off-by: Codex <codex@localhost>
+---
+ lib/c-stack.c | 9 +------
+ 1 file changed, 4 insertions(+), 9 deletions(-)
+
+diff --git a/lib/c-stack.c b/lib/c-stack.c
+index 3b7d5e1..b4b7f72 100644
+--- a/lib/c-stack.c
++++ b/lib/c-stack.c
+@@ -53,9 +53,4 @@
+-#ifndef SIGSTKSZ
+-# define SIGSTKSZ 16384
+-#elif HAVE_LIBSIGSEGV && SIGSTKSZ < 16384
+-/* libsigsegv 2.6 through 2.8 have a bug where some architectures use
+-   more than the Linux default of an 8k alternate stack when deciding
+-   if a fault was caused by stack overflow.  */
+-# undef SIGSTKSZ
+-# define SIGSTKSZ 16384
+-#endif
++#ifdef SIGSTKSZ
++# undef SIGSTKSZ
++#endif
++#define SIGSTKSZ 16384
+-- 
+2.34.1
