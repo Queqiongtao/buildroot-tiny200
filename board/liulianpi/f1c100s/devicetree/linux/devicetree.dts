@@ -1,0 +1,161 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR X11)
+
+/dts-v1/;
+#include "suniv-f1c100s.dtsi"
+#include <dt-bindings/gpio/gpio.h>
+
+/ {
+	model = "LiuLianPi";
+	compatible = "allwinner,suniv-f1c200s",
+		     "allwinner,suniv-f1c100s";
+
+	chosen {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		bootargs = "console=ttyS0,115200 earlyprintk rootwait init=/preinit root=/dev/mtdblock2 rootfstype=squashfs overlayfsdev=/dev/mtdblock3";
+	};
+
+	panel: panel {
+		compatible = "simple-panel";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		panel-timing {
+			clock-frequency = <40000000>;
+			hactive = <1024>;
+			vactive = <600>;
+			hfront-porch = <150>;
+			hback-porch = <150>;
+			hsync-len = <20>;
+			vfront-porch = <15>;
+			vback-porch = <15>;
+			vsync-len = <5>;
+			hsync-active = <1>;
+			vsync-active = <1>;
+		};
+
+		port@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			panel_input: endpoint@0 {
+				reg = <0>;
+				remote-endpoint = <&tcon0_out_lcd>;
+			};
+		};
+	};
+};
+
+&pio {
+	lcd_rgb666_pins: lcd-rgb666-pins {
+		pins = "PD0", "PD1", "PD2", "PD3", "PD4", "PD5",
+		       "PD6", "PD7", "PD8", "PD9", "PD10", "PD11",
+		       "PD12", "PD13", "PD14", "PD15", "PD16", "PD17",
+		       "PD18", "PD19", "PD20", "PD21";
+		function = "lcd";
+	};
+};
+
+&spi0 {
+	status = "okay";
+
+	spi-nor@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "winbond,w25q128", "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <50000000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "u-boot";
+				reg = <0x000000 0x70000>;
+				read-only;
+			};
+
+			partition@1 {
+				label = "kernel";
+				reg = <0x70000 0x590000>;
+				read-only;
+			};
+
+			partition@2 {
+				label = "rom";
+				reg = <0x600000 0x700000>;
+				read-only;
+			};
+
+			partition@3 {
+				label = "overlay";
+				reg = <0xd00000 0x300000>;
+			};
+		};
+	};
+};
+
+&uart0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart0_pe_pins>;
+	status = "okay";
+};
+
+&mmc0 {
+	status = "okay";
+	broken-cd;
+};
+
+&otg_sram {
+	status = "okay";
+};
+
+&usb_otg {
+	dr_mode = "peripheral";
+	status = "okay";
+};
+
+&usbphy {
+	status = "okay";
+};
+
+&de {
+	status = "okay";
+};
+
+&fe0 {
+	status = "okay";
+};
+
+&be0 {
+	status = "okay";
+};
+
+&tcon0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&lcd_rgb666_pins>;
+	status = "okay";
+};
+
+&tcon0_out {
+	tcon0_out_lcd: endpoint@0 {
+		reg = <0>;
+		remote-endpoint = <&panel_input>;
+	};
+};
+
+&codec {
+	allwinner,audio-routing =
+		"Headphone", "HP",
+		"Headphone", "HPCOM",
+		"LINEIN", "Line In",
+		"FMINL", "Left FM In",
+		"FMINR", "Right FM In",
+		"MIC", "Mic";
+	status = "okay";
+};
