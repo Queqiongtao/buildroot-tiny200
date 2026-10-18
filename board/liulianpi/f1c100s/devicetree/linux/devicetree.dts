@@ -14,7 +14,17 @@
 		#size-cells = <1>;
 		ranges;
 
-		bootargs = "console=ttyS0,115200 earlyprintk rootwait init=/preinit root=/dev/mtdblock2 rootfstype=squashfs overlayfsdev=/dev/mtdblock3";
+		bootargs = "console=tty0 console=ttyS0,115200 earlyprintk rootwait init=/preinit root=/dev/mtdblock3 rootfstype=squashfs overlayfsdev=/dev/mtdblock4";
+	};
+
+	/* Filled in by U-Boot (sunxi_display.c simplefb support) when the
+	 * 1024x600 LCD console is set up, so the kernel gets a framebuffer
+	 * before the sun4i DRM driver takes over */
+	framebuffer {
+		compatible = "allwinner,simple-framebuffer",
+			     "simple-framebuffer";
+		allwinner,pipeline = "de_be0-lcd0";
+		status = "disabled";
 	};
 
 	panel: panel {
@@ -76,23 +86,29 @@
 
 			partition@0 {
 				label = "u-boot";
-				reg = <0x000000 0x70000>;
+				reg = <0x000000 0x80000>;
 				read-only;
 			};
 
 			partition@1 {
-				label = "kernel";
-				reg = <0x70000 0x590000>;
+				label = "splash";
+				reg = <0x80000 0x80000>;
 				read-only;
 			};
 
 			partition@2 {
+				label = "kernel";
+				reg = <0x100000 0x500000>;
+				read-only;
+			};
+
+			partition@3 {
 				label = "rom";
 				reg = <0x600000 0x700000>;
 				read-only;
 			};
 
-			partition@3 {
+			partition@4 {
 				label = "overlay";
 				reg = <0xd00000 0x300000>;
 			};

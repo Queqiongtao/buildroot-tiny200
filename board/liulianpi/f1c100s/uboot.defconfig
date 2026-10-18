@@ -25,6 +25,9 @@ CONFIG_BOOTDELAY=0
 CONFIG_VIDEO_LCD_MODE="x:1024,y:600,depth:18,pclk_khz:40000,le:150,ri:150,up:15,lo:15,hs:20,vs:5,sync:3,vmode:0"
 CONFIG_BOOTCOMMAND="setenv lcd_bl_pin 134; run distro_bootcmd;"
 
+# Splash screen: boot script runs "bmp display", needs the bmp command
+CONFIG_CMD_BMP=y
+
 CONFIG_NET=n
 
 CONFIG_SPI=y
