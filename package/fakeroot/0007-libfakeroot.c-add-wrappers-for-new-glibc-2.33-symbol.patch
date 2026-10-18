@@ -1,0 +1,97 @@
+From feda578ca3608b7fc9a28a3a91293611c0ef47b7 Mon Sep 17 00:00:00 2001
+From: Ilya Lipnitskiy <ilya.lipnitskiy@gmail.com>
+Date: Thu, 11 Feb 2021 21:00:04 -0800
+Subject: [PATCH] libfakeroot.c: add stat wrappers for new glibc 2.33+ symbols
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+glibc 2.33 exports stat/lstat/fstat/fstatat as real libc symbols and
+they are no longer implemented as calls to the legacy __xstat/__lxstat/
+__fxstat/__fxstatat compatibility symbols. libfakeroot must therefore
+export its own stat-family wrappers, otherwise every stat-family call
+made by programs built against glibc >= 2.33 (mksquashfs, tar, mke2fs,
+coreutils, ...) bypasses fakeroot and returns the real on-disk
+ownership.
+
+Without these wrappers, rootfs images are generated with the build
+user's uid/gid (e.g. 1000) instead of root:root. Combined with the
+BusyBox setuid permission entry (/bin/busybox 4755 0 0), the setuid
+bit then escalates to the wrong user: the kernel starts /preinit as
+root, but /bin/sh -> /bin/busybox runs with euid 1000, so /preinit
+cannot mount /proc or /overlay and the whole userland comes up
+unprivileged.
+
+The mknod/mknodat wrappers are intentionally omitted here, they are
+already added by 0006-add-mknod-mknodat-wrappers-for-glibc-2.33.patch.
+
+Backported from:
+https://git.busybox.net/buildroot/plain/package/fakeroot/0006-libfakeroot.c-add-wrappers-for-new-glibc-2.33-symbol.patch?h=2020.02.x
+(fakeroot upstream commit feda578ca3608b7fc9a28a3a91293611c0ef47b7)
+plus the nested __GLIBC__ guard fix from fakeroot upstream commit
+8090dffdad8fda86dccd47ce7a7db8840bdf7d7b (only guard __GLIBC_PREREQ
+when __GLIBC__ is defined, for non-glibc hosts).
+
+Signed-off-by: Ilya Lipnitskiy <ilya.lipnitskiy@gmail.com>
+Signed-off-by: Jörg Krause <joerg.krause@embedded.rocks>
+---
+ libfakeroot.c | 45 ++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 45 insertions(+)
+
+diff --git a/libfakeroot.c b/libfakeroot.c
+--- a/libfakeroot.c
++++ b/libfakeroot.c
+@@ -1343,6 +1343,51 @@
+ }
+ #endif /* HAVE_RENAMEAT */
+ #endif /* HAVE_FSTATAT */
++#if defined(__GLIBC__)
++#if __GLIBC_PREREQ(2,33)
++/* Glibc 2.33 exports symbols for these functions in the shared lib,
++   so the legacy __xstat/__lxstat/__fxstat/__fxstatat wrappers are no
++   longer used by programs built against glibc >= 2.33 */
++int lstat(const char *file_name, struct stat *statbuf) {
++  return WRAP_LSTAT LSTAT_ARG(_STAT_VER, file_name, statbuf);
++}
++
++int stat(const char *file_name, struct stat *st) {
++  return WRAP_STAT STAT_ARG(_STAT_VER, file_name, st);
++}
++
++int fstat(int fd, struct stat *st) {
++  return WRAP_FSTAT FSTAT_ARG(_STAT_VER, fd, st);
++}
++
++#ifdef HAVE_FSTATAT
++int fstatat(int dir_fd, const char *path, struct stat *st, int flags) {
++  return WRAP_FSTATAT FSTATAT_ARG(_STAT_VER, dir_fd, path, st, flags);
++}
++#endif
++
++#ifdef STAT64_SUPPORT
++int lstat64(const char *file_name, struct stat64 *st) {
++  return WRAP_LSTAT64 LSTAT64_ARG(_STAT_VER, file_name, st);
++}
++
++int stat64(const char *file_name, struct stat64 *st) {
++  return WRAP_STAT64 STAT64_ARG(_STAT_VER, file_name, st);
++}
++
++int fstat64(int fd, struct stat64 *st) {
++  return WRAP_FSTAT64 FSTAT64_ARG(_STAT_VER, fd, st);
++}
++
++#ifdef HAVE_FSTATAT
++int fstatat64(int dir_fd, const char *path, struct stat64 *st, int flags) {
++  return WRAP_FSTATAT64 FSTATAT64_ARG(_STAT_VER, dir_fd, path, st, flags);
++}
++#endif /* HAVE_FSTATAT */
++#endif /* STAT64_SUPPORT */
++#endif /* __GLIBC_PREREQ(2,33) */
++#endif /* __GLIBC__ */
++
+ 
+ 
+ #ifdef FAKEROOT_FAKENET
+-- 
+2.30.1
