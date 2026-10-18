@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: LiuLianPi BSP <dev@localhost>
+Date: Sun, 18 Oct 2026 00:00:00 +0800
+Subject: [PATCH] drm/panel: simple: add generic "simple-panel" support
+
+The in-tree panel-simple driver only matches specific panel model
+compatibles. Device trees that use the generic "simple-panel" (with a
+panel-timing node describing the panel) never get a panel driver bound,
+which makes sun4i-tcon defer its probe forever and leaves sun4i-drm
+without any registered card.
+
+Add a generic entry populating the timing bounds so the existing
+device tree override mechanism (panel_simple_parse_panel_timing_node)
+accepts the panel-timing properties. This keeps the DRM mode set in
+sync with the timings already used by U-Boot.
+
+Signed-off-by: LiuLianPi BSP <dev@localhost>
+---
+ drivers/gpu/drm/panel/panel-simple.c | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+--- a/drivers/gpu/drm/panel/panel-simple.c
++++ b/drivers/gpu/drm/panel/panel-simple.c
+@@ -3108,6 +3108,29 @@
+ 	.bus_format = MEDIA_BUS_FMT_RGB888_1X24,
+ };
+ 
++static const struct display_timing simple_panel_timing = {
++	.pixelclock = { 30000000, 40000000, 60000000 },
++	.hactive = { 1024, 1024, 1024 },
++	.hfront_porch = { 1, 150, 300 },
++	.hback_porch = { 1, 150, 300 },
++	.hsync_len = { 1, 20, 100 },
++	.vactive = { 600, 600, 600 },
++	.vfront_porch = { 1, 15, 60 },
++	.vback_porch = { 1, 15, 60 },
++	.vsync_len = { 1, 5, 60 },
++	.flags = DISPLAY_FLAGS_HSYNC_HIGH | DISPLAY_FLAGS_VSYNC_HIGH,
++};
++
++static const struct panel_desc simple_panel_desc = {
++	.timings = &simple_panel_timing,
++	.num_timings = 1,
++	.bpc = 6,
++	.size = {
++		.width = 154,
++		.height = 86,
++	},
++};
++
+ static const struct of_device_id platform_of_match[] = {
+ 	{
+ 		.compatible = "ampire,am-480272h3tmqw-t01h",
+@@ -3436,6 +3459,9 @@
+ 	}, {
+ 		.compatible = "winstar,wf35ltiacd",
+ 		.data = &winstar_wf35ltiacd,
++	}, {
++		.compatible = "simple-panel",
++		.data = &simple_panel_desc,
+ 	}, {
+ 		/* sentinel */
+ 	}
