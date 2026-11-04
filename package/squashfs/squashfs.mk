@@ -77,10 +77,12 @@ define SQUASHFS_INSTALL_TARGET_CMDS
 		-C $(@D)/squashfs-tools/ INSTALL_DIR=$(TARGET_DIR)/usr/bin install
 endef
 
+# GCC 15 treats the old-style signal handlers in squashfs-tools 4.4 as
+# incompatible pointer types (an error by default).
 define HOST_SQUASHFS_BUILD_CMDS
 	$(HOST_MAKE_ENV) $(MAKE) \
 		CC="$(HOSTCC)" \
-		EXTRA_CFLAGS="$(HOST_CFLAGS)" \
+		EXTRA_CFLAGS="$(HOST_CFLAGS) -std=gnu17 -Wno-error=incompatible-pointer-types" \
 		EXTRA_LDFLAGS="$(HOST_LDFLAGS)" \
 		$(HOST_SQUASHFS_MAKE_ARGS) \
 		-C $(@D)/squashfs-tools/

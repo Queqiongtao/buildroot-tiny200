@@ -116,6 +116,9 @@ BR2_PACKAGE_VDEC_SELFTEST=y
   - host 构建固定 `-std=gnu17`，规避 1.45.6 的 `typedef int bool` 冲突。
   - 固定 `ac_cv_path_mkdir=/usr/bin/mkdir`，避免宿主 `uutils coreutils`
     的 `mkdir --version` 不被旧 configure 识别而生成相对路径 `install-sh`。
+- `package/squashfs/squashfs.mk`
+  - host-squashfs 增加 `-std=gnu17 -Wno-error=incompatible-pointer-types`，
+    兼容 GCC 15 对旧式 signal handler 的诊断。
 - `package/python/python.mk`
   - host-python 2.7 构建固定 `-std=gnu17`，规避 `typedef enum {false, true} bool`
     与 GCC 15 的 gnu23 关键字冲突。
