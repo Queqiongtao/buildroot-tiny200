@@ -122,6 +122,8 @@ BR2_PACKAGE_VDEC_SELFTEST=y
 - `package/gdb/gdb.mk`
   - host-gdb 内置 readline 增加 `-std=gnu17 -D_GNU_SOURCE` 和相应
     `-Wno-error=` 选项，兼容 GCC 15 对旧式 signal/readline 代码的诊断。
+- `board/allwinner/suniv-f1c100s/patch/u-boot/0002-pylibfdt-swig-4.3-appendoutput-compat.patch`
+  - 适配 SWIG ≥4.3 的 `SWIG_Python_AppendOutput` 签名变化。
 
 ## 验证方法
 

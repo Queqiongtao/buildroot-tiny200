@@ -204,6 +204,8 @@ echo 0 > /sys/class/vtconsole/vtcon1/bind
    - `host-gdb 8.2.1` 内置的 readline 在 GCC 15 下有 `wcwidth` 隐式声明、
      旧式函数指针和信号处理函数签名告警；host 构建已加
      `-std=gnu17 -D_GNU_SOURCE` 及对应的 `-Wno-error=` 选项。
+   - U-Boot 2020.07 的 `pylibfdt` 与 SWIG ≥4.3 不兼容；已加
+     `board/allwinner/suniv-f1c100s/patch/u-boot/0002-pylibfdt-swig-4.3-appendoutput-compat.patch`。
    这些只在较新的宿主工具链上出现，不影响目标板运行。
 
 4. **宿主 GNU Make 4.4 + glibc 2.30 的重新执行循环**

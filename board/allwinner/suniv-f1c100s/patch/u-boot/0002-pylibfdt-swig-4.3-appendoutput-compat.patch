@@ -1,0 +1,50 @@
+From: Buildroot <buildroot@localhost>
+Date: Sun, 12 Jul 2026 00:00:00 +0800
+Subject: [PATCH] pylibfdt: use SWIG_AppendOutput for SWIG >= 4.3 compat
+
+SWIG 4.3.0 changed the signature of SWIG_Python_AppendOutput() from two
+arguments to three (adding the "is_void" parameter). The hand-written
+typemaps in libfdt.i_shipped still call it with two arguments, which
+breaks compilation of the generated libfdt_wrap.c with modern SWIG
+(e.g. 4.4.0) with:
+
+  too few arguments to function 'SWIG_Python_AppendOutput'; expected 3, have 2
+
+Use the version-agnostic SWIG_AppendOutput() macro instead, which expands
+to the correct call (it appends the SWIG "$isvoid" special variable on
+newer SWIG and is a plain 2-argument macro on older ones).
+
+Signed-off-by: Buildroot <buildroot@localhost>
+---
+ scripts/dtc/pylibfdt/libfdt.i_shipped | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+--- a/scripts/dtc/pylibfdt/libfdt.i_shipped
++++ b/scripts/dtc/pylibfdt/libfdt.i_shipped
+@@ -1032,7 +1032,7 @@
+ 			fdt_string(fdt1, fdt32_to_cpu($1->nameoff)));
+ 		buff = PyByteArray_FromStringAndSize(
+ 			(const char *)($1 + 1), fdt32_to_cpu($1->len));
+-		resultobj = SWIG_Python_AppendOutput(resultobj, buff);
++		resultobj = SWIG_AppendOutput(resultobj, buff);
+ 	}
+ }
+ 
+@@ -1071,7 +1071,7 @@
+ 
+ %typemap(argout) int *depth {
+         PyObject *val = Py_BuildValue("i", *arg$argnum);
+-        resultobj = SWIG_Python_AppendOutput(resultobj, val);
++        resultobj = SWIG_AppendOutput(resultobj, val);
+ }
+ 
+ %apply int *depth { int *depth };
+@@ -1087,7 +1087,7 @@
+            if (PyTuple_GET_SIZE(resultobj) == 0)
+               resultobj = val;
+            else
+-              resultobj = SWIG_Python_AppendOutput(resultobj, val);
++              resultobj = SWIG_AppendOutput(resultobj, val);
+         }
+ }
+ 
