@@ -166,6 +166,43 @@ vdec_selftest -p 1 /mnt/sd/test.mp4
 echo 0 > /sys/class/vtconsole/vtcon1/bind
 ```
 
+## 构建验证记录（2026-11-05）
+
+使用 `output/host/bin/host-make -j12` 完整构建成功。
+
+| 产物 | 大小 | 说明 |
+| ---- | ---- | ---- |
+| `rootfs.squashfs` | 6,119,424 B（5.84 MiB） | 小于 7MiB 分区上限 |
+| `kernel.itb` | 4,337,816 B（4.14 MiB） | 小于 5MiB kernel 分区 |
+| `sysimage-nor.img` | 16,777,216 B | 16MiB 整包 |
+| `devicetree.dtb` | 14,635 B | `cedar_ve` status okay，compatible 为 video-engine |
+
+分区偏移校验：
+
+```text
+0x000000: 16 00 00 ea 65 47 4f 4e   eGON.BT0
+0x080000: 42 4d ce 15 01 00 00 00   BM（24bpp splash）
+0x100000: d0 0d fe ed 00 42 30 98   FIT
+0x600000: 68 73 71 73 d5 02 00 00   hsqs
+0xd00000: ff ff ff ff ff ff ff ff   overlay 擦除态
+```
+
+rootfs 校验：
+
+```text
+-rwsr-xr-x root/root ... bin/busybox
+-rwxr-xr-x root/root ... preinit
+-rwxr-xr-x root/root ... usr/bin/vdec_selftest
+-rwxr-xr-x root/root ... usr/bin/modetest
+```
+
+内核配置确认：
+
+```text
+CONFIG_MEDIA_CONTROLLER_REQUEST_API=y
+CONFIG_VIDEO_SUNXI_CEDRUS=y
+```
+
 ## 已知限制
 
 - 本阶段只验证视频，不含音频。
