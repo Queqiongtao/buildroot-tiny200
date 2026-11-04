@@ -14,7 +14,12 @@ HOST_FAKEROOT_DEPENDENCIES = host-acl
 # so they're of no real use
 HOST_FAKEROOT_CONF_ENV = \
 	ac_cv_header_sys_capability_h=no \
-	ac_cv_func_capset=no
+	ac_cv_func_capset=no \
+	CFLAGS="$(HOST_CFLAGS) -std=gnu17 -Wno-error=implicit-function-declaration"
+
+# fakeroot 1.20.2's setgroups configure probe omits <stdio.h>; GCC 15
+# treats the implicit puts() declaration as an error by default.
+HOST_FAKEROOT_MAKE_OPTS = CFLAGS="$(HOST_CFLAGS) -std=gnu17 -Wno-error=implicit-function-declaration"
 # 0003-Select-TCP-when-lack-of-SYSV-IPC.patch touches configure.ac
 HOST_FAKEROOT_AUTORECONF = YES
 FAKEROOT_LICENSE = GPL-3.0+

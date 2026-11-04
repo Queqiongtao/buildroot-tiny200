@@ -184,6 +184,12 @@ echo 0 > /sys/class/vtconsole/vtcon1/bind
      `-Werror` 下触发 `discarded-qualifiers`。仓库已在
      `package/dtc/dtc.mk` 的 host 构建参数中加
      `-Wno-error=discarded-qualifiers`。
+   - `host-fakeroot 1.20.2` 在 glibc 2.43 下遇到 FTS 的
+     `struct stat` / `struct stat64` 指针类型不匹配，以及 configure 探测
+     中 `puts()` 隐式声明被 GCC 15 当成错误。仓库已加
+     `package/fakeroot/0008-libfakeroot-cast-fts-statp-to-stat64.patch`，
+     并在 host 构建参数中加
+     `-std=gnu17 -Wno-error=implicit-function-declaration`。
    这些只在较新的宿主工具链上出现，不影响目标板运行。
 
 4. **宿主 GNU Make 4.4 + glibc 2.30 的重新执行循环**

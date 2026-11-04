@@ -1,0 +1,30 @@
+fakeroot: cast fts_statp to struct stat64
+
+glibc 2.43 changed the FTSENT::fts_statp type visible to this build to
+struct stat *, while fakeroot's SEND_GET_STAT64 helper still expects a
+struct stat64 *.  On 64-bit hosts the two layouts are identical, so a
+cast preserves the existing fakeroot protocol and fixes the host build.
+
+This is only a host-tool compatibility fix; it does not affect the
+target rootfs.
+
+--- a/libfakeroot.c
++++ b/libfakeroot.c
+@@ -2017,7 +2017,7 @@
+     r->fts_statp = NULL;  /* Otherwise fts_statp may be a random pointer */
+   if(r && r->fts_statp) {  /* Should we bother checking fts_info here? */
+ # if defined(STAT64_SUPPORT) && !defined(__APPLE__)
+-    SEND_GET_STAT64(r->fts_statp, _STAT_VER);
++    SEND_GET_STAT64((struct stat64 *)r->fts_statp, _STAT_VER);
+ # else
+     SEND_GET_STAT(r->fts_statp, _STAT_VER);
+ # endif
+@@ -2040,7 +2040,7 @@
+   for(r = first; r; r = r->fts_link) {
+     if(r && r->fts_statp) {  /* Should we bother checking fts_info here? */
+ # if defined(STAT64_SUPPORT) && !defined(__APPLE__)
+-      SEND_GET_STAT64(r->fts_statp, _STAT_VER);
++      SEND_GET_STAT64((struct stat64 *)r->fts_statp, _STAT_VER);
+ # else
+       SEND_GET_STAT(r->fts_statp, _STAT_VER);
+ # endif

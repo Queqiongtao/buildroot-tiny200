@@ -102,6 +102,12 @@ BR2_PACKAGE_VDEC_SELFTEST=y
   - 修复 `host-make` 在缺少 `makeinfo` 时的安装失败；完整构建改用
     `host-make 4.2.1`，规避宿主 GNU Make 4.4 与 glibc 2.30 的
     `MAKE_RESTARTS` 循环。
+- `package/fakeroot/`
+  - 新增 `0008-libfakeroot-cast-fts-statp-to-stat64.patch`，适配 glibc
+    2.43 下 FTS 的 `struct stat` / `struct stat64` 类型差异。
+  - `package/fakeroot/fakeroot.mk` 的 host 构建参数加
+    `-std=gnu17 -Wno-error=implicit-function-declaration`，修复 setgroups
+    configure 探测。
 
 ## 验证方法
 
