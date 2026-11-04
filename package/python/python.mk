@@ -42,8 +42,13 @@ HOST_PYTHON_CONF_OPTS += \
 # try to communicate over the network during the build.
 HOST_PYTHON_CONF_ENV += \
 	LDFLAGS="$(HOST_LDFLAGS) -Wl,--enable-new-dtags" \
+	CFLAGS="$(HOST_CFLAGS) -std=gnu17" \
 	ac_cv_prog_HAS_HG=/bin/false \
 	ac_cv_prog_SVNVERSION=/bin/false
+
+# Python 2.7 uses "typedef enum {false, true} bool"; GCC 15 defaults to
+# gnu23 where false/true are keywords.
+HOST_PYTHON_MAKE_OPTS = CFLAGS="$(HOST_CFLAGS) -std=gnu17"
 
 # Building host python in parallel sometimes triggers a "Bus error"
 # during the execution of "./python setup.py build" in the
