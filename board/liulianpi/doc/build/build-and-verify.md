@@ -99,6 +99,46 @@ dmesg | grep -iE "sun4i-drm|fb0"      # 有组件 bound 记录
 fb-test -r                            # LCD 全屏红
 ```
 
+## 视频解码验证（cedrus bring-up）
+
+当前仅移植了视频解码链路，音频和完整播放器尚未接入。
+
+目标机检查：
+
+```sh
+ls /dev/video*                        # cedrus 应创建 /dev/video0
+ls /dev/dri/                          # card0
+dmesg | grep -i cedrus
+```
+
+准备 SD 卡（VFAT/EXT4），挂载并播放一个 H.264 MP4：
+
+```sh
+mkdir -p /mnt/sd
+mount /dev/mmcblk0p1 /mnt/sd
+
+# 注意：U-Boot 会先扫描 SD 卡；作为数据盘时不要在 SD 上放 kernel.itb，
+# 否则可能优先从 SD 启动。
+
+modetest -M sun4i-drm                 # 查看 plane 序号
+vdec_selftest /mnt/sd/test.mp4
+vdec_selftest -p 1 /mnt/sd/test.mp4   # plane 0 不是视频层时
+
+# 如果 fbcon 控制台盖住了视频层，可临时解绑 fbcon：
+echo 0 > /sys/class/vtconsole/vtcon1/bind
+```
+
+测试文件建议：
+
+- H.264 Constrained Baseline
+- yuv420p
+- 1024×600 或更低
+- 单 slice/帧
+- 恒定帧率
+
+`vdec_selftest` 只验证视频，不会播放音频。详细限制见
+`../changes/2026-11-04-cedrus-video-bringup.md`。
+
 ## 烧录
 
 ### 方法一:FEL 全量烧写(推荐,NOR 无需可用 bootloader)
@@ -131,3 +171,30 @@ fb-test -r                            # LCD 全屏红
    4/8/24bpp;32bpp 会打印 `Error: 32 bit/pixel bitmaps not supported`。
    当前 `board/allwinner/generic/splash.bmp` 已转换为 24bpp(像素与原始一致)。
    转换脚本思路见变更记录。
+
+3. **宿主 GCC 15 下 host-gawk / host-gmp / host-mpfr / host-mpc / host-dtc 的兼容性**
+   - `host-gawk 5.0.1` 在 GCC 15 默认的 gnu23 模式下，`()` 表示无参数，
+     旧代码 `ssize_t (*readfunc)()` 会与 `read_one_line(int, void *, size_t)`
+     类型冲突。仓库已加
+     `package/gawk/0002-fix-readfunc-prototype.patch`，并在
+     `package/gawk/gawk.mk` 的 host 构建参数中加 `-std=gnu17`。
+   - `host-gmp 6.1.2`、`host-mpfr 4.0.2`、`host-mpc 1.1.0` 的 configure
+     探测同样依赖旧式空参数列表；对应 `.mk` 已为 host 构建加 `-std=gnu17`。
+   - `host-dtc 1.6.0` 的 `libfdt/fdt_overlay.c`、`fdtput.c` 在
+     `-Werror` 下触发 `discarded-qualifiers`。仓库已在
+     `package/dtc/dtc.mk` 的 host 构建参数中加
+     `-Wno-error=discarded-qualifiers`。
+   这些只在较新的宿主工具链上出现，不影响目标板运行。
+
+4. **宿主 GNU Make 4.4 + glibc 2.30 的重新执行循环**
+   - 现象：`glibc ... Building` 长时间无输出，`/proc/<pid>/environ`
+     中 `MAKE_RESTARTS` 持续增大。
+   - 原因：宿主 `make 4.4.x` 与 glibc 2.30 的 makefile 重新生成逻辑不兼容。
+   - 处理：
+
+     ```shell
+     make host-make
+     output/host/bin/host-make -j$(nproc)
+     ```
+
+     `host-make` 是 Buildroot 构建的 GNU Make 4.2.1，不会触发该循环。

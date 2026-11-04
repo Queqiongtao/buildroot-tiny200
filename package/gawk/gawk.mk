@@ -33,6 +33,11 @@ endif
 
 HOST_GAWK_CONF_OPTS = --without-readline --without-mpfr
 
+# GCC 15 defaults to gnu23, where an empty parameter list means "no
+# arguments" instead of the old unspecified-arguments semantics. gawk 5.0.1
+# still uses old-style function pointers such as ssize_t (*)().
+HOST_GAWK_MAKE_OPTS = CFLAGS="$(HOST_CFLAGS) -std=gnu17"
+
 define GAWK_CREATE_SYMLINK
 	ln -sf gawk $(TARGET_DIR)/usr/bin/awk
 endef

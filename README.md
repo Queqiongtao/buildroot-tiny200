@@ -78,6 +78,17 @@ make -j$(nproc)
 首次构建会下载源码到 `dl/`，并把工具链、内核、U-Boot 和 rootfs 等产物写入
 `output/`。
 
+> 如果宿主使用 GNU Make 4.4 及以上，且构建卡在 `glibc ... Building`
+> （`MAKE_RESTARTS` 持续增大），先构建 Buildroot 自带的 Make 4.2.1，
+> 再用它继续：
+>
+> ```shell
+> make host-make
+> output/host/bin/host-make -j$(nproc)
+> ```
+>
+> 详细说明见 [构建、校验与烧录](board/liulianpi/doc/build/build-and-verify.md)。
+
 ### 4. 构建产物
 
 构建完成后，主要文件位于 `output/images/`：

@@ -13,6 +13,11 @@ GMP_LICENSE_FILES = COPYING.LESSERv3 COPYINGv2
 GMP_DEPENDENCIES = host-m4
 HOST_GMP_DEPENDENCIES = host-m4
 
+# GCC 15 defaults to gnu23, which breaks GMP 6.1.2's old-style
+# void g() configure probes. Keep host gmp on gnu17.
+HOST_GMP_CONF_ENV = CFLAGS="$(HOST_CFLAGS) -std=gnu17"
+HOST_GMP_MAKE_OPTS = CFLAGS="$(HOST_CFLAGS) -std=gnu17"
+
 # GMP doesn't support assembly for coldfire or mips r6 ISA yet
 # Disable for ARM v7m since it has different asm constraints
 ifeq ($(BR2_m68k_cf)$(BR2_MIPS_CPU_MIPS32R6)$(BR2_MIPS_CPU_MIPS64R6)$(BR2_ARM_CPU_ARMV7M),y)

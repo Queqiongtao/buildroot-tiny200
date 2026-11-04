@@ -1,0 +1,14 @@
+config BR2_PACKAGE_VDEC_SELFTEST
+	bool "vdec-selftest"
+	select BR2_PACKAGE_LIBDRM
+	select BR2_PACKAGE_LIBDRM_ENABLE_ATOMIC
+	help
+	  Standalone H.264 decoder bring-up tool for the Allwinner suniv
+	  Cedar video engine (cedrus V4L2 M2M).
+
+	  It reads an MP4 file, decodes the H.264 video track through
+	  /dev/video0, and displays the decoded tiled NV12 frames through
+	  a DRM plane. It is intended for bring-up and validation before
+	  integrating a full player.
+
+	  https://github.com/rhodesepass/drm_app_neo

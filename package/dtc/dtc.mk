@@ -66,8 +66,10 @@ define DTC_INSTALL_TARGET_CMDS
 endef
 
 # host build
+# GCC 15 makes -Wdiscarded-qualifiers an error in dtc 1.6.0's libfdt/fdtput;
+# keep the warning but do not fail the host build.
 define HOST_DTC_BUILD_CMDS
-	$(HOST_CONFIGURE_OPTS) $(MAKE) EXTRA_CFLAGS="$(HOST_CFLAGS) -fPIC" -C $(@D) $(HOST_DTC_MAKE_OPTS)
+	$(HOST_CONFIGURE_OPTS) $(MAKE) EXTRA_CFLAGS="$(HOST_CFLAGS) -fPIC -Wno-error=discarded-qualifiers" -C $(@D) $(HOST_DTC_MAKE_OPTS)
 endef
 
 define HOST_DTC_INSTALL_CMDS

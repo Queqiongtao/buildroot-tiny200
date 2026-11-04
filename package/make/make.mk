@@ -14,6 +14,8 @@ MAKE_LICENSE_FILES = COPYING
 MAKE_AUTORECONF = YES
 
 MAKE_CONF_OPTS = --without-guile
+MAKE_MAKE_OPTS = MAKEINFO=true
+MAKE_INSTALL_OPTS = MAKEINFO=true install
 
 # Disable the 'load' operation for static builds since it needs dlopen
 ifeq ($(BR2_STATIC_LIBS),y)
@@ -22,6 +24,8 @@ endif
 
 HOST_MAKE_DEPENDENCIES = host-pkgconf
 HOST_MAKE_CONF_OPTS = --without-guile
+HOST_MAKE_MAKE_OPTS = MAKEINFO=true
+HOST_MAKE_INSTALL_OPTS = MAKEINFO=true install
 
 # Configure host-make binary to be 'host-make' to ensure it isn't
 # accidently used by packages when they invoke recursive / sub-make.

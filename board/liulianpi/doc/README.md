@@ -19,6 +19,7 @@
 - [故障复盘:rootfs 属主错误导致系统以非 root 启动](troubleshooting/rootfs-uid1000-setuid-busybox.md)
 - [故障复盘:sun4i-drm 不注册(panel compatible 无匹配)](troubleshooting/drm-not-binding-simple-panel-compatible.md)
 - [变更记录 2026-10-18:rootfs 属主修复 / 开机图 / simplefb / DRM 修复](changes/2026-10-18-rootfs-ownership-splash-simplefb.md)
+- [变更记录 2026-11-04:cedrus 视频解码 bring-up](changes/2026-11-04-cedrus-video-bringup.md)
 
 ## 维护约定
 

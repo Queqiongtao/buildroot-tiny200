@@ -1,0 +1,22 @@
+From: QQT UartScreen <noreply@example.com>
+Subject: [PATCH] media: cedrus: complete cancelled request controls once
+
+vb2 calls buf_request_complete for every request-associated buffer while
+__vb2_queue_cancel resets the queue. cedrus_queue_cleanup also completed the
+same controls before returning the buffer, causing request_is_queued to be
+cleared twice and triggering a WARN during timeout recovery.
+
+Leave request completion to the vb2 callback on streamoff. Normal completed
+decode jobs are still completed by cedrus_device_run.
+
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -406,8 +406,6 @@ static void cedrus_queue_cleanup(struct vb2_queue *vq, u32 state)
+ 		if (!vbuf)
+ 			return;
+ 
+-		v4l2_ctrl_request_complete(vbuf->vb2_buf.req_obj.req,
+-					   &ctx->hdl);
+ 		v4l2_m2m_buf_done(vbuf, state);
+ 	}
+ }

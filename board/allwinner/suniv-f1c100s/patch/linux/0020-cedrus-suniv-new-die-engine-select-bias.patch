@@ -1,0 +1,71 @@
+cedrus: 新批次 suniv die 引擎选择编码探测 (sel_bias)
+
+新批次 F1C200s die 的 VE 解码引擎 select 编码带 bit3(H264=9/MPEG=8),
+老编码(1/0)下子引擎寄存器窗口读全零、写不落地,解码永不启动、无中断。
+probe 时用 H264 中断使能位(掩码 0x7)写读探测编码,engine_enable 叠加 sel_bias。
+同一镜像兼容新老两种 die。dmesg 验证行:"engine select bias: 8/0"。
+
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.h
+@@ -166,6 +166,8 @@
+ 
+ 	unsigned int		capabilities;
+ 	unsigned int		quirks;
++	/* 新批次 suniv die 引擎选择编码带 bit3(H264=9/MPEG=8),probe 时探测 */
++	unsigned int		sel_bias;
+ };
+ 
+ extern struct cedrus_dec_ops cedrus_dec_ops_mpeg2;
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
+@@ -58,11 +58,40 @@
+ 		return -EINVAL;
+ 	}
+ 
+-	cedrus_write(dev, VE_MODE, reg);
++	cedrus_write(dev, VE_MODE, reg | dev->sel_bias);
+ 
+ 	return 0;
+ }
+ 
++/*
++ * 新批次 suniv die 的引擎选择编码在 [3:0] 带 bit3(H264=9 而非 1),
++ * 老编码下子引擎寄存器窗口不响应(读全零、写不落地)。
++ * 用 H264 中断使能位(实现掩码恰为 0x7)做写读探测,兼容两种编码;
++ * 探测按 boot 进行——该 die 的编码模式随上电会漂。
++ */
++static void cedrus_probe_sel_bias(struct cedrus_dev *dev)
++{
++	dev->sel_bias = 0;
++
++	cedrus_write(dev, VE_MODE, VE_MODE_DEC_H264);
++	cedrus_write(dev, VE_H264_CTRL, VE_H264_CTRL_INT_MASK);
++	if (cedrus_read(dev, VE_H264_CTRL) == VE_H264_CTRL_INT_MASK)
++		goto out;
++
++	cedrus_write(dev, VE_MODE, VE_MODE_DEC_H264 | BIT(3));
++	cedrus_write(dev, VE_H264_CTRL, VE_H264_CTRL_INT_MASK);
++	if (cedrus_read(dev, VE_H264_CTRL) == VE_H264_CTRL_INT_MASK) {
++		dev->sel_bias = BIT(3);
++		goto out;
++	}
++
++	dev_warn(dev->dev, "H264 engine window dead in both select encodings\n");
++out:
++	cedrus_write(dev, VE_H264_CTRL, 0);
++	cedrus_write(dev, VE_MODE, VE_MODE_DISABLED);
++	dev_info(dev->dev, "engine select bias: %u\n", dev->sel_bias);
++}
++
+ void cedrus_engine_disable(struct cedrus_dev *dev)
+ {
+ 	cedrus_write(dev, VE_MODE, VE_MODE_DISABLED);
+@@ -274,6 +303,8 @@
+ 		goto err_ram_clk;
+ 	}
+ 
++	cedrus_probe_sel_bias(dev);
++
+ 	return 0;
+ 
+ err_ram_clk:
