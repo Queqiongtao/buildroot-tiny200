@@ -201,6 +201,9 @@ echo 0 > /sys/class/vtconsole/vtcon1/bind
      `-std=gnu17` 和 `ac_cv_path_mkdir=/usr/bin/mkdir`。
    - `host-python 2.7.18` 的 `typedef enum {false, true} bool` 同样与
      GCC 15 的 gnu23 冲突；host 构建已固定 `-std=gnu17`。
+   - `host-gdb 8.2.1` 内置的 readline 在 GCC 15 下有 `wcwidth` 隐式声明、
+     旧式函数指针和信号处理函数签名告警；host 构建已加
+     `-std=gnu17 -D_GNU_SOURCE` 及对应的 `-Wno-error=` 选项。
    这些只在较新的宿主工具链上出现，不影响目标板运行。
 
 4. **宿主 GNU Make 4.4 + glibc 2.30 的重新执行循环**

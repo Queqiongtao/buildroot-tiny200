@@ -39,8 +39,16 @@ HOST_GDB_DEPENDENCIES = host-expat host-ncurses
 
 # GCC 10 defaults to -fno-common, which breaks the simulator shipped
 # with the old gdb versions used by this buildroot.
-HOST_GDB_CONF_ENV += CFLAGS="$(HOST_CFLAGS) -fcommon"
-HOST_GDB_MAKE_ENV += CFLAGS="$(HOST_CFLAGS) -fcommon"
+HOST_GDB_CONF_ENV += CFLAGS="$(HOST_CFLAGS) -fcommon -D_GNU_SOURCE -std=gnu17 \
+	-Wno-error=implicit-function-declaration \
+	-Wno-error=incompatible-pointer-types \
+	-Wno-error=return-mismatch \
+	-Wno-error=discarded-qualifiers"
+HOST_GDB_MAKE_ENV += CFLAGS="$(HOST_CFLAGS) -fcommon -D_GNU_SOURCE -std=gnu17 \
+	-Wno-error=implicit-function-declaration \
+	-Wno-error=incompatible-pointer-types \
+	-Wno-error=return-mismatch \
+	-Wno-error=discarded-qualifiers"
 
 # Disable building documentation
 GDB_MAKE_OPTS += MAKEINFO=true

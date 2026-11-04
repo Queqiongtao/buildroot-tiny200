@@ -119,6 +119,9 @@ BR2_PACKAGE_VDEC_SELFTEST=y
 - `package/python/python.mk`
   - host-python 2.7 构建固定 `-std=gnu17`，规避 `typedef enum {false, true} bool`
     与 GCC 15 的 gnu23 关键字冲突。
+- `package/gdb/gdb.mk`
+  - host-gdb 内置 readline 增加 `-std=gnu17 -D_GNU_SOURCE` 和相应
+    `-Wno-error=` 选项，兼容 GCC 15 对旧式 signal/readline 代码的诊断。
 
 ## 验证方法
 
