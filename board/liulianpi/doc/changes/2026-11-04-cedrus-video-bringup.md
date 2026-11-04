@@ -112,6 +112,10 @@ BR2_PACKAGE_VDEC_SELFTEST=y
   - host 构建增加 `-Wno-error=implicit-function-declaration`、
     `-Wno-error=incompatible-pointer-types`、
     `-Wno-error=discarded-qualifiers`，兼容 glibc 2.43 / GCC 15。
+- `package/e2fsprogs/e2fsprogs.mk`
+  - host 构建固定 `-std=gnu17`，规避 1.45.6 的 `typedef int bool` 冲突。
+  - 固定 `ac_cv_path_mkdir=/usr/bin/mkdir`，避免宿主 `uutils coreutils`
+    的 `mkdir --version` 不被旧 configure 识别而生成相对路径 `install-sh`。
 
 ## 验证方法
 

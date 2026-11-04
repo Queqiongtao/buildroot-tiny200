@@ -195,6 +195,10 @@ echo 0 > /sys/class/vtconsole/vtcon1/bind
      host 构建参数已加 `-Wno-error=implicit-function-declaration`、
      `-Wno-error=incompatible-pointer-types`、
      `-Wno-error=discarded-qualifiers`。
+   - `host-e2fsprogs 1.45.6` 的 `typedef int bool` 与 GCC 15 的 gnu23
+     冲突；同时宿主的 `uutils coreutils mkdir` 不被旧 configure 识别，
+     会生成相对路径 `config/install-sh`。对应 host 构建已固定
+     `-std=gnu17` 和 `ac_cv_path_mkdir=/usr/bin/mkdir`。
    这些只在较新的宿主工具链上出现，不影响目标板运行。
 
 4. **宿主 GNU Make 4.4 + glibc 2.30 的重新执行循环**

@@ -66,6 +66,14 @@ endif
 E2FSPROGS_CONF_ENV += ac_cv_path_LDCONFIG=true
 
 HOST_E2FSPROGS_CONF_ENV += ac_cv_path_LDCONFIG=true
+# e2fsprogs 1.45.6 has a local "typedef int bool"; GCC 15 defaults to
+# gnu23 where bool is a keyword. Keep the host build on gnu17.
+HOST_E2FSPROGS_CONF_ENV += CFLAGS="$(HOST_CFLAGS) -std=gnu17"
+# The host may use uutils coreutils, whose mkdir --version string is not
+# recognised by this old configure script. Use the absolute path so the
+# generated MKDIR_P works from subdirectories.
+HOST_E2FSPROGS_CONF_ENV += ac_cv_path_mkdir=/usr/bin/mkdir
+HOST_E2FSPROGS_MAKE_OPTS = CFLAGS="$(HOST_CFLAGS) -std=gnu17"
 
 E2FSPROGS_INSTALL_STAGING_OPTS = \
 	DESTDIR=$(STAGING_DIR) \
