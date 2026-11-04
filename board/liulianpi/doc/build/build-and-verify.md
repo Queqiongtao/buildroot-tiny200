@@ -190,6 +190,11 @@ echo 0 > /sys/class/vtconsole/vtcon1/bind
      `package/fakeroot/0008-libfakeroot-cast-fts-statp-to-stat64.patch`，
      并在 host 构建参数中加
      `-std=gnu17 -Wno-error=implicit-function-declaration`。
+   - `host-util-linux 2.35.1` 在 glibc 2.43 下会因缺少
+     `<sys/pidfd.h>` 及 `libfdisk` 的类型转换告警被 GCC 15 拒绝；对应
+     host 构建参数已加 `-Wno-error=implicit-function-declaration`、
+     `-Wno-error=incompatible-pointer-types`、
+     `-Wno-error=discarded-qualifiers`。
    这些只在较新的宿主工具链上出现，不影响目标板运行。
 
 4. **宿主 GNU Make 4.4 + glibc 2.30 的重新执行循环**

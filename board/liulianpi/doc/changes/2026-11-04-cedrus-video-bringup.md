@@ -108,6 +108,10 @@ BR2_PACKAGE_VDEC_SELFTEST=y
   - `package/fakeroot/fakeroot.mk` 的 host 构建参数加
     `-std=gnu17 -Wno-error=implicit-function-declaration`，修复 setgroups
     configure 探测。
+- `package/util-linux/util-linux.mk`
+  - host 构建增加 `-Wno-error=implicit-function-declaration`、
+    `-Wno-error=incompatible-pointer-types`、
+    `-Wno-error=discarded-qualifiers`，兼容 glibc 2.43 / GCC 15。
 
 ## 验证方法
 

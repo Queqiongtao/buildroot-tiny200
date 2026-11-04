@@ -37,6 +37,18 @@ UTIL_LINUX_CONF_OPTS += \
 
 HOST_UTIL_LINUX_DEPENDENCIES = host-pkgconf
 
+# util-linux 2.35.1 does not include <sys/pidfd.h>; glibc 2.43 exposes
+# pidfd_open()/pidfd_send_signal() so the configure test succeeds and the
+# implicit declarations become errors with GCC 15.
+HOST_UTIL_LINUX_CONF_ENV = CFLAGS="$(HOST_CFLAGS) \
+	-Wno-error=implicit-function-declaration \
+	-Wno-error=incompatible-pointer-types \
+	-Wno-error=discarded-qualifiers"
+HOST_UTIL_LINUX_MAKE_OPTS = CFLAGS="$(HOST_CFLAGS) \
+	-Wno-error=implicit-function-declaration \
+	-Wno-error=incompatible-pointer-types \
+	-Wno-error=discarded-qualifiers"
+
 # We also don't want the host-python dependency
 HOST_UTIL_LINUX_CONF_OPTS = \
 	--without-systemd \
