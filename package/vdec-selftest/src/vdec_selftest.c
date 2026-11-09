@@ -282,15 +282,21 @@ static int display_open(struct display *d, struct vdec_ctx *v, int plane_index)
 static int display_show(struct display *d, struct vdec_ctx *v, int slot)
 {
 	unsigned int src_w = v->cap_width, src_h = v->cap_height;
+	unsigned int dst_w = src_w, dst_h = src_h;
 
-	/* 裁掉右侧 32 对齐 padding，不越过屏幕 */
-	if (d->screen_w && src_w > d->screen_w)
-		src_w = d->screen_w;
-	if (d->screen_h && src_h > d->screen_h)
-		src_h = d->screen_h;
+	/*
+	 * Keep the full coded size (e.g. 1024x608 for a 1024x600 stream)
+	 * as the frontend source. Cropping the source to the panel height
+	 * breaks the tiled NV12 chroma layout; scale the full frame down
+	 * to the panel instead.
+	 */
+	if (d->screen_w && dst_w > d->screen_w)
+		dst_w = d->screen_w;
+	if (d->screen_h && dst_h > d->screen_h)
+		dst_h = d->screen_h;
 
 	return drmModeSetPlane(d->fd, d->plane_id, d->crtc_id, d->fb_ids[slot],
-			       0, 0, 0, src_w, src_h, 0, 0, src_w << 16,
+			       0, 0, 0, dst_w, dst_h, 0, 0, src_w << 16,
 			       src_h << 16);
 }
 

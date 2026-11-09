@@ -20,6 +20,7 @@
 - [故障复盘:sun4i-drm 不注册(panel compatible 无匹配)](troubleshooting/drm-not-binding-simple-panel-compatible.md)
 - [变更记录 2026-10-18:rootfs 属主修复 / 开机图 / simplefb / DRM 修复](changes/2026-10-18-rootfs-ownership-splash-simplefb.md)
 - [变更记录 2026-11-04:cedrus 视频解码 bring-up](changes/2026-11-04-cedrus-video-bringup.md)
+- [变更记录 2026-11-09:vdec_selftest 1024×600 tiled 裁剪修复](changes/2026-11-09-vdec-selftest-1024x600-tiled-crop.md)
 
 ## 维护约定
 
