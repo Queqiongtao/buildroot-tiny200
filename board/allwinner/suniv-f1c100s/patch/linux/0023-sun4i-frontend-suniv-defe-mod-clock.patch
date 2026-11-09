@@ -1,0 +1,79 @@
+From: Shirogane Tsumugi <artoriapendragon123@gmail.com>
+Subject: [PATCH] drm/sun4i: frontend: raise suniv DEFE mod clock to 384 MHz
+
+The suniv DEFE needs ~6 mod-clk cycles per NV12 pixel (measured on
+F1C200s by polling DEFE_LINT_CTRL[27:16], the frontend output line
+counter, against the TCON line counter in TCON_DEBUG_INFO[27:16]).
+At the mainline-default 300 MHz that caps the scanout at ~63 ns/px,
+i.e. a ~627-pixel line per 12.7 us scanline of the boe_035 720x1280
+panel (64 MHz dotclock).
+
+Any frontend plane wider than that misses line deadlines: the
+measured FE line rate at 720 px wide is 0.87 lines per TCON line, the
+backend re-displays the previous line for every missed one, and the
+plane appears vertically stretched by ~15% (frame timing itself is
+unaffected - vblank rate and TCON FIFO status stay clean). At 512 px
+wide the FE tracks 1:1 and the picture is correct, which matched the
+observed good/bad split between 512- and 700/720-wide buffers.
+
+Give the suniv frontend its own mod-clk rate of 384 MHz. On this chip
+the de-fe mux offers pll-video and pll-periph (600 MHz): 384 MHz is an
+exact hit on pll-video/1 while the panel is up (pll-video = 6x the
+64 MHz dotclock), verified to bring the 700/720-wide FE line rate back
+to 1.0. Since pll-video scales with the dotclock and the line-time
+budget scales inversely with it, pll-video/1 keeps roughly the same
+width headroom (~htotal x dclk_div / 6 px) for other panels too; if
+pll-video sits at an unusable rate when the frontend resumes, the
+rounding falls back to pll-periph/2 = 300 MHz, the old behaviour.
+
+--- a/drivers/gpu/drm/sun4i/sun4i_frontend.c
++++ b/drivers/gpu/drm/sun4i/sun4i_frontend.c
+@@ -686,7 +686,7 @@
+ 	struct sun4i_frontend *frontend = dev_get_drvdata(dev);
+ 	int ret;
+ 
+-	clk_set_rate(frontend->mod_clk, 300000000);
++	clk_set_rate(frontend->mod_clk, frontend->data->mod_rate);
+ 
+ 	clk_prepare_enable(frontend->bus_clk);
+ 	clk_prepare_enable(frontend->mod_clk);
+@@ -732,17 +732,29 @@
+ static const struct sun4i_frontend_data sun4i_a10_frontend = {
+ 	.ch_phase		= { 0x000, 0xfc000 },
+ 	.has_coef_rdy		= true,
++	.mod_rate		= 300000000,
+ };
+ 
+ static const struct sun4i_frontend_data sun8i_a33_frontend = {
+ 	.ch_phase		= { 0x400, 0xfc400 },
+ 	.has_coef_access_ctrl	= true,
++	.mod_rate		= 300000000,
+ };
+ 
++/*
++ * The suniv DEFE needs ~6 clock cycles per NV12 pixel, so at the usual
++ * 300 MHz a line wider than ~630 pixels can no longer be produced within
++ * one scanline of the 720x1280 panels (12.7us): the backend then re-shows
++ * the previous line and the plane appears vertically stretched. Ask for
++ * 384 MHz instead: on this chip that is an exact hit on pll-video/1
++ * (whose rate scales with the pixel clock, so the line-time budget scales
++ * along), with pll-periph/2 = 300 MHz as the fallback pick.
++ */
+ static const struct sun4i_frontend_data suniv_f1c100s_frontend = {
+ 	.ch_phase		= { 0x000, 0xfc000 },
+ 	.has_coef_rdy		= true,
+ 	.has_coef_access_ctrl	= true,
++	.mod_rate		= 384000000,
+ };
+ 
+ const struct of_device_id sun4i_frontend_of_table[] = {
+--- a/drivers/gpu/drm/sun4i/sun4i_frontend.h
++++ b/drivers/gpu/drm/sun4i/sun4i_frontend.h
+@@ -120,6 +120,7 @@
+ 	bool	has_coef_access_ctrl;
+ 	bool	has_coef_rdy;
+ 	u32	ch_phase[2];
++	unsigned long	mod_rate;
+ };
+ 
+ struct sun4i_frontend {
