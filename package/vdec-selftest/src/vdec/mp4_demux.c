@@ -172,12 +172,87 @@ static int parse_stsd(struct mp4_demux *m, const uint8_t *data, uint64_t size)
 	return 0;
 }
 
+/*
+ * Fill per-sample presentation timestamps from stts (decode deltas) and
+ * ctts (composition offsets).  The sample table is in decode order, so
+ * stts yields DTS; adding ctts yields PTS.  Times are first accumulated in
+ * media timescale units and converted to microseconds at the end.
+ */
+static void build_pts(struct mp4_demux *m, const uint8_t *stbl,
+		      uint64_t stbl_size, uint32_t timescale)
+{
+	const uint8_t *stts, *ctts;
+	uint64_t stts_sz, ctts_sz;
+	uint32_t entries, i, s, idx;
+	int64_t dts = 0;
+	uint32_t first_delta = 0;
+
+	for (i = 0; i < m->samples_count; i++)
+		m->samples[i].pts_us = 0;
+
+	if (find_box(stbl, stbl_size, FOURCC('s', 't', 't', 's'), &stts,
+		     &stts_sz) && stts_sz >= 8) {
+		entries = rd_u32(stts + 4);
+		idx = 0;
+		for (i = 0; i < entries && idx < m->samples_count; i++) {
+			const uint8_t *e = stts + 8 + (uint64_t)i * 8;
+			uint32_t count, delta;
+
+			if (e + 8 > stts + stts_sz)
+				break;
+			count = rd_u32(e);
+			delta = rd_u32(e + 4);
+			if (i == 0)
+				first_delta = delta;
+			for (s = 0; s < count && idx < m->samples_count; s++) {
+				m->samples[idx].pts_us = dts;
+				dts += delta;
+				idx++;
+			}
+		}
+		/* Truncated stts: keep the last known DTS for the rest. */
+		while (idx < m->samples_count)
+			m->samples[idx++].pts_us = dts;
+	}
+
+	/* ctts: version 0 offsets are unsigned, version 1 signed. */
+	if (find_box(stbl, stbl_size, FOURCC('c', 't', 't', 's'), &ctts,
+		     &ctts_sz) && ctts_sz >= 8) {
+		uint8_t version = ctts[0];
+		entries = rd_u32(ctts + 4);
+		idx = 0;
+		for (i = 0; i < entries && idx < m->samples_count; i++) {
+			const uint8_t *e = ctts + 8 + (uint64_t)i * 8;
+			uint32_t count, off;
+			int64_t soff;
+
+			if (e + 8 > ctts + ctts_sz)
+				break;
+			count = rd_u32(e);
+			off = rd_u32(e + 4);
+			soff = (version == 1) ? (int32_t)off : (int64_t)off;
+			for (s = 0; s < count && idx < m->samples_count; s++)
+				m->samples[idx++].pts_us += soff;
+		}
+	}
+
+	if (timescale) {
+		for (i = 0; i < m->samples_count; i++)
+			m->samples[i].pts_us = m->samples[i].pts_us * 1000000 /
+					       timescale;
+		m->stts_delta = first_delta;
+		if (first_delta)
+			m->frame_duration_us = (uint32_t)((uint64_t)first_delta *
+							  1000000 / timescale);
+	}
+}
+
 /* Build the sample list from stsz/stsc/stco(co64). */
 static int build_samples(struct mp4_demux *m, const uint8_t *stbl,
-			 uint64_t stbl_size)
+			 uint64_t stbl_size, uint32_t timescale)
 {
-	const uint8_t *stsz, *stsc, *stco, *co64, *stts, *stss;
-	uint64_t stsz_sz, stsc_sz, stco_sz, co64_sz, stts_sz, stss_sz;
+	const uint8_t *stsz, *stsc, *stco, *co64, *stss;
+	uint64_t stsz_sz, stsc_sz, stco_sz, co64_sz, stss_sz;
 	uint32_t sample_count, sample_size_default;
 	uint32_t chunk_count;
 	bool is_co64 = false;
@@ -317,10 +392,7 @@ static int build_samples(struct mp4_demux *m, const uint8_t *stbl,
 		}
 	}
 
-	/* stts: use the first entry's delta (assets are constant frame rate) */
-	if (find_box(stbl, stbl_size, FOURCC('s', 't', 't', 's'), &stts, &stts_sz) &&
-	    stts_sz >= 16 && rd_u32(stts + 4) >= 1)
-		m->stts_delta = rd_u32(stts + 12);
+	build_pts(m, stbl, stbl_size, timescale);
 
 	return 0;
 
@@ -366,9 +438,6 @@ static bool parse_trak(struct mp4_demux *m, const uint8_t *trak, uint64_t size)
 		}
 	}
 
-	if (build_samples(m, stbl, stbl_sz) < 0)
-		return false;
-
 	/* mdhd: timescale at +12 (version 0) / +20 (version 1) */
 	{
 		const uint8_t *mdhd;
@@ -379,9 +448,8 @@ static bool parse_trak(struct mp4_demux *m, const uint8_t *trak, uint64_t size)
 			     &mdhd_sz) && mdhd_sz >= 16)
 			timescale = rd_u32(mdhd + (mdhd[0] == 1 ? 20 : 12));
 
-		if (timescale && m->stts_delta)
-			m->frame_duration_us = (uint32_t)((uint64_t)m->stts_delta *
-							  1000000 / timescale);
+		if (build_samples(m, stbl, stbl_sz, timescale) < 0)
+			return false;
 	}
 
 	return true;

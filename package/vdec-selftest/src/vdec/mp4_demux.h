@@ -27,6 +27,7 @@ struct mp4_sample {
 	uint64_t offset;	/* byte offset in file */
 	uint32_t size;
 	bool sync;		/* sync (key) sample */
+	int64_t pts_us;		/* presentation time from track start */
 };
 
 enum {
