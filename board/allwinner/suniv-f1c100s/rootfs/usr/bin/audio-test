@@ -2,41 +2,56 @@
 #
 # audio-test [file.wav] -- configure the F1C100s codec and play a WAV.
 #
-# The default path is the 5-second stereo tone shipped on the SD card
-# (test-tone.wav: 440 Hz left, 880 Hz right).
+# The target uses tinyalsa 1.1.1, whose tinymix syntax is:
+#   tinymix contents
+#   tinymix get  NAME
+#   tinymix set  NAME VALUE...
 #
 set -u
 
 wav="${1:-}"
 if [ -z "$wav" ]; then
-	if [ -f /mnt/sd/test-tone.wav ]; then
-		wav=/mnt/sd/test-tone.wav
-	else
-		wav=/usr/share/audio/test-tone.wav
-	fi
+	for p in /mnt/sd/test-music.wav \
+		 /mnt/sd/test-speech.wav \
+		 /mnt/sd/test-tone.wav \
+		 /usr/share/audio/test-tone.wav; do
+		if [ -f "$p" ]; then
+			wav="$p"
+			break
+		fi
+	done
 fi
 
-if [ ! -f "$wav" ]; then
+if [ -z "$wav" ] || [ ! -f "$wav" ]; then
 	echo "usage: audio-test /path/to/file.wav" >&2
-	echo "missing: $wav" >&2
+	echo "missing: ${wav:-no default wav found}" >&2
 	exit 1
 fi
 
 echo "== codec controls before =="
-tinymix 2>/dev/null | grep -E 'Headphone|DAC|Speaker|Power Amplifier' || true
+tinymix contents 2>/dev/null |
+	grep -E 'Headphone|DAC|Speaker|Power Amplifier' || true
 
 # suniv codec: DAC -> headphone amp, unmute both channels.
 # Both volumes are 0 dB at their max value (63).
-tinymix "Headphone Source Playback Route" DAC 2>/dev/null || true
-tinymix "Headphone Playback Switch" 1 1 2>/dev/null || true
-tinymix "Headphone Playback Volume" 63 2>/dev/null || true
-tinymix "DAC Playback Volume" 55 2>/dev/null || true
+tinymix set "Headphone Source Playback Route" DAC 2>/dev/null || true
+tinymix set "Headphone Playback Switch" 1 1 2>/dev/null || true
+tinymix set "Headphone Playback Volume" 63 2>/dev/null || true
+tinymix set "DAC Playback Volume" 55 2>/dev/null || true
+# In case a previous silent-passage test left the PA powered down.
+tinymix set "Headphone PA Enable" 1 2>/dev/null || true
 
 echo "== codec controls after =="
-tinymix 2>/dev/null | grep -E 'Headphone|DAC|Speaker|Power Amplifier' || true
+tinymix contents 2>/dev/null |
+	grep -E 'Headphone|DAC|Speaker|Power Amplifier' || true
 
 echo "== PCM device =="
 tinypcminfo -D 0 -d 0 2>/dev/null | head -20 || true
 
 echo "== playing $wav =="
-exec tinyplay -D 0 -d 0 "$wav"
+tinyplay -D 0 -d 0 "$wav"
+rc=$?
+
+# Leave the PA enabled for the next playback.
+tinymix set "Headphone PA Enable" 1 2>/dev/null || true
+exit $rc

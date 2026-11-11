@@ -97,6 +97,7 @@ struct display {
 	uint32_t crtc_id;
 	uint32_t plane_id;
 	unsigned int screen_w, screen_h;
+	int error_reported;
 	uint32_t fb_ids[VDEC_MAX_CAP_BUFS];
 };
 
@@ -182,7 +183,8 @@ static int display_show(struct display *d, struct vdec_ctx *v, int slot)
 		uint64_t by_w = (uint64_t)d->screen_w * src_h;
 		uint64_t by_h = (uint64_t)d->screen_h * src_w;
 
-		if (by_w >= by_h) {
+		/* Pick the smaller scale so the rectangle always fits. */
+		if (by_w <= by_h) {
 			dst_w = d->screen_w;
 			dst_h = (unsigned int)((uint64_t)src_h * d->screen_w /
 					       src_w);
@@ -199,9 +201,20 @@ static int display_show(struct display *d, struct vdec_ctx *v, int slot)
 		dst_y = (d->screen_h - dst_h) / 2;
 	}
 
-	return drmModeSetPlane(d->fd, d->plane_id, d->crtc_id, d->fb_ids[slot],
-			       0, dst_x, dst_y, dst_w, dst_h, 0, 0,
-			       src_w << 16, src_h << 16);
+	{
+		int ret;
+
+		ret = drmModeSetPlane(d->fd, d->plane_id, d->crtc_id,
+				      d->fb_ids[slot], 0, dst_x, dst_y,
+				      dst_w, dst_h, 0, 0,
+				      src_w << 16, src_h << 16);
+		if (ret < 0 && !d->error_reported) {
+			fprintf(stderr, "SetPlane %ux%u+%u+%u: %s\n",
+				dst_w, dst_h, dst_x, dst_y, strerror(errno));
+			d->error_reported = 1;
+		}
+		return ret;
+	}
 }
 
 static void display_close(struct display *d, struct vdec_ctx *v)
@@ -225,6 +238,8 @@ struct audio_player {
 	struct mp4_audio demux;
 	NeAACDecHandle dec;
 	struct pcm *pcm;
+	struct mixer *mixer;
+	struct mixer_ctl *hp_pa;
 	pthread_t thread;
 
 	pthread_mutex_t lock;
@@ -234,6 +249,7 @@ struct audio_player {
 	int stop;
 	int done;
 	int failed;
+	int hp_pa_on;
 
 	uint64_t frames_written;
 	int64_t clock_us;
@@ -243,6 +259,18 @@ struct audio_player {
 	int16_t *stereo;
 	unsigned int stereo_frames;
 };
+
+/* Digital silence below this peak (S16) counts as "no audio". */
+#define HP_PA_SILENCE_PEAK	16
+#define HP_PA_SILENCE_HOLD_US	500000
+
+static void audio_set_pa(struct audio_player *ap, int on)
+{
+	if (!ap || !ap->hp_pa || ap->hp_pa_on == on)
+		return;
+	if (mixer_ctl_set_value(ap->hp_pa, 0, on) == 0)
+		ap->hp_pa_on = on;
+}
 
 static void mixer_set_enum(struct mixer *mx, const char *name, const char *val)
 {
@@ -282,7 +310,7 @@ static void mixer_set_volume(struct mixer *mx, const char *name, int percent)
 		mixer_ctl_set_value(c, i, val);
 }
 
-static void audio_mixer_setup(void)
+static void audio_mixer_setup(struct audio_player *ap)
 {
 	struct mixer *mx = mixer_open(0);
 
@@ -302,7 +330,14 @@ static void audio_mixer_setup(void)
 	mixer_set_volume(mx, "Headphone Playback Volume", 100);
 	mixer_set_volume(mx, "DAC Playback Volume", 85);
 
-	mixer_close(mx);
+	ap->mixer = mx;
+	ap->hp_pa = mixer_get_ctl_by_name(mx, "Headphone PA Enable");
+	if (ap->hp_pa) {
+		mixer_ctl_set_value(ap->hp_pa, 0, 1);
+		ap->hp_pa_on = 1;
+	} else {
+		fprintf(stderr, "audio: no 'Headphone PA Enable' control\n");
+	}
 }
 
 static void audio_publish_locked(struct audio_player *ap)
@@ -341,6 +376,8 @@ static void *audio_thread(void *arg)
 	struct audio_player *ap = arg;
 	unsigned int i;
 	unsigned int decode_errors = 0;
+
+	int64_t silent_us = 0;
 
 	pthread_mutex_lock(&ap->lock);
 	while (!ap->start)
@@ -385,6 +422,37 @@ static void *audio_thread(void *arg)
 		frames = info.samples / info.channels;
 		if (!frames)
 			continue;
+
+		/*
+		 * The suniv Class-D headphone PA has an audible hiss/squeak
+		 * even with zeroed DAC input.  Power it down after a run of
+		 * digital silence and bring it back as soon as real audio
+		 * returns.  This keeps silent scenes quiet without gating
+		 * normal music.
+		 */
+		{
+			const int16_t *s = pcm;
+			unsigned int peak = 0;
+			unsigned int k;
+
+			for (k = 0; k < info.samples; k++) {
+				int v = s[k];
+
+				if (v < 0)
+					v = -v;
+				if ((unsigned int)v > peak)
+					peak = (unsigned int)v;
+			}
+			if (peak <= HP_PA_SILENCE_PEAK) {
+				silent_us += (int64_t)frames * 1000000 /
+					     ap->rate;
+				if (silent_us >= HP_PA_SILENCE_HOLD_US)
+					audio_set_pa(ap, 0);
+			} else {
+				silent_us = 0;
+				audio_set_pa(ap, 1);
+			}
+		}
 
 		if (info.channels == 1) {
 			unsigned int j;
@@ -516,7 +584,7 @@ static int audio_open(struct audio_player *ap, const char *path)
 		return -1;
 	}
 
-	audio_mixer_setup();
+	audio_mixer_setup(ap);
 
 	printf("audio: AAC %u Hz, %u ch -> ALSA %u Hz stereo\n",
 	       ap->demux.sample_rate, ap->demux.channels, ap->rate);
@@ -583,6 +651,11 @@ static void audio_close(struct audio_player *ap)
 	if (ap->pcm) {
 		pcm_close(ap->pcm);
 		ap->pcm = NULL;
+	}
+	if (ap->mixer) {
+		mixer_close(ap->mixer);
+		ap->mixer = NULL;
+		ap->hp_pa = NULL;
 	}
 	if (ap->dec) {
 		NeAACDecClose(ap->dec);
@@ -665,8 +738,8 @@ static int display_frame(struct display *disp, struct vdec_ctx *vdec,
 	if (g_stop)
 		return 0;
 
-	if (display_show(disp, vdec, slot) < 0)
-		fprintf(stderr, "display failed\n");
+	/* display_show() logs the first failure with errno; keep going. */
+	(void)display_show(disp, vdec, slot);
 
 	h264_dpb_set_on_screen(dpb, slot, true);
 	if (held[1] >= 0)

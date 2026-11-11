@@ -23,6 +23,7 @@
 - [变更记录 2026-11-09:vdec_selftest 1024×600 tiled 裁剪修复](changes/2026-11-09-vdec-selftest-1024x600-tiled-crop.md)
 - [变更记录 2026-11-09:suniv DEFE/frontend 显示修复](changes/2026-11-09-suniv-defe-frontend-display-fix.md)
 - [变更记录 2026-11-10:mp4play 播放器与 AAC 音频](changes/2026-11-10-mp4play-aac-audio.md)
+- [变更记录 2026-11-11:suniv codec 底噪、HP PA 控制与播放器修复](changes/2026-11-11-suniv-codec-hp-pa-noise.md)
 
 ## 维护约定
 

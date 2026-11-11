@@ -1,0 +1,85 @@
+From: Queqiongtao <467500670@qq.com>
+Subject: [PATCH] ASoC: sun4i-codec: add suniv HP PA control and bias calibration
+
+The suniv F1C100s/F1C200s codec has its analog tuning registers at
+0x2c/0x30/0x34 (not the 0x28/0x2c/0x34 documented for the F1C600).
+The boot ROM leaves ADDA_TUNE/BIAS_CAL1 programmed but never triggers
+the BIAS/DA16 calibration, which leaves the Class-D headphone output
+with a noticeable "hiss + squeak" noise floor.
+
+Write the three values after reset and expose the HPPAEN bit as a
+"Headphone PA Enable" control so userspace can power the PA down across
+silent passages.
+--- a/sound/soc/sunxi/sun4i-codec.c
++++ b/sound/soc/sunxi/sun4i-codec.c
+@@ -291,6 +291,19 @@
+ 
+ #define SUNIV_CODEC_ADC_DBG		(0x4c)
+ 
++/*
++ * Analog tuning/calibration registers.  On the F1C100s/F1C200s these sit
++ * at 0x2c/0x30/0x34 (the F1C600 manual documents them at 0x28/0x2c/0x34;
++ * the actual suniv layout is shifted by one register).
++ */
++#define SUNIV_CODEC_ADDA_TUNE		(0x2c)
++#define SUNIV_CODEC_BIAS_CAL0		(0x30)
++#define SUNIV_CODEC_BIAS_CAL1		(0x34)
++
++#define SUNIV_CODEC_ADDA_TUNE_VALUE	0x44555556
++#define SUNIV_CODEC_BIAS_CAL1_VALUE	0x10000000
++#define SUNIV_CODEC_BIAS_CAL0_TRIGGER	0x00000004
++
+ struct sun4i_codec {
+ 	struct device	*dev;
+ 	struct regmap	*regmap;
+@@ -1395,6 +1408,15 @@
+ 		   SUNIV_CODEC_OM_DACA_CTRL,
+ 		   SUNIV_CODEC_OM_DACA_CTRL_LHPPAMUTE,
+ 		   SUNIV_CODEC_OM_DACA_CTRL_RHPPAMUTE, 1, 0),
++	/*
++	 * Direct control of the headphone PA enable (HPPAEN).  DAPM also
++	 * drives this bit when the playback path is powered; exposing it
++	 * lets userspace power the PA down across silent passages, which
++	 * removes the suniv Class-D output-stage idle noise.
++	 */
++	SOC_SINGLE("Headphone PA Enable",
++		   SUNIV_CODEC_OM_DACA_CTRL,
++		   SUNIV_CODEC_OM_DACA_CTRL_HPPAEN, 1, 0),
+ 	SOC_SINGLE_TLV("Line In Playback Volume",
+ 		       SUNIV_CODEC_ADC_ACTL, SUNIV_CODEC_ADC_LINEINVOL,
+ 		       0x7, 0, suniv_codec_out_mixer_pregain_scale),
+@@ -2055,6 +2077,23 @@
+ };
+ MODULE_DEVICE_TABLE(of, sun4i_codec_of_match);
+ 
++/*
++ * The suniv codec needs its analog bias/DA16 calibration values written
++ * after reset.  The boot ROM leaves the tuning register programmed but
++ * never triggers the BIAS/DA16 calibration, which leaves the Class-D
++ * headphone output with a noticeably higher noise floor.
++ */
++static void suniv_codec_init(struct sun4i_codec *scodec)
++{
++	regmap_write(scodec->regmap, SUNIV_CODEC_ADDA_TUNE,
++		     SUNIV_CODEC_ADDA_TUNE_VALUE);
++	regmap_write(scodec->regmap, SUNIV_CODEC_BIAS_CAL1,
++		     SUNIV_CODEC_BIAS_CAL1_VALUE);
++	regmap_write(scodec->regmap, SUNIV_CODEC_BIAS_CAL0,
++		     SUNIV_CODEC_BIAS_CAL0_TRIGGER);
++	msleep(50);
++}
++
+ static int sun4i_codec_probe(struct platform_device *pdev)
+ {
+ 	struct snd_soc_card *card;
+@@ -2148,6 +2187,10 @@
+ 		}
+ 	}
+ 
++	if (of_device_is_compatible(pdev->dev.of_node,
++				    "allwinner,suniv-f1c100s-codec"))
++		suniv_codec_init(scodec);
++
+ 	/* DMA configuration for TX FIFO */
+ 	scodec->playback_dma_data.addr = res->start + quirks->reg_dac_txdata;
+ 	scodec->playback_dma_data.maxburst = quirks->dma_max_burst;
