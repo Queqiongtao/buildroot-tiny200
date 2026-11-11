@@ -2,7 +2,7 @@
 
 - 日期：2026-11-11
 - 主题：定位并改善 F1C100s 耳机输出底噪，修复 mp4play 显示和 audio-test mixer 语法
-- 关联补丁：`0024-suniv-codec-hp-pa-and-bias.patch`
+- 关联补丁：`0024-suniv-codec-hp-pa-control.patch`
 
 ## 现象
 
@@ -22,38 +22,34 @@
 ## 寄存器定位
 
 F1C600 手册写的模拟 tuning 寄存器是 `0x28/0x2C/0x34`，但这颗 F1C100s/F1C200s
-实际布局是：
+的实际读数是：
 
-| 地址 | 值 | 含义 |
+| 地址 | 值 | 说明 |
 | --- | --- | --- |
-| `0x2C` | `0x44555556` | `ADDA_TUNE`，boot ROM 已设置 |
-| `0x30` | `0x00000000` | `BIAS_DA16_CAL_CTRL0`，**缺少校准触发** |
-| `0x34` | `0x10000000` | `BIAS_DA16_CAL_CTRL1`，boot ROM 已设置 |
+| `0x2C` | `0x44555556` | 与 `ADDA_TUNE` 上电值一致，boot ROM 已设置 |
+| `0x30` | `0x00000000` | 尝试写 `0x00000004` 触发 BIAS/DA16 校准，但该位**不会自清零** |
+| `0x34` | `0x10000000` | 与 `BIAS_DA16_CAL_CTRL1` 上电值一致，boot ROM 已设置 |
 
-即真正缺的是：
+曾尝试按手册在 `0x30` 写 `0x00000004` 触发校准，并在 probe 和播放中分别验证，
+触发位都保持为 `4`，说明这颗芯片的校准路径与手册不一致。该写入已从最终补丁中移除，
+避免留下一个永远 pending 的位。
 
-```text
-0x30 = 0x00000004
-```
-
-上电时没有触发 BIAS/DA16 校准，耳放输出级底噪偏高。
+最终采用 **直接关闭 HPPAEN** 的方式解决静音段底噪。
 
 ## 变更内容
 
 ### 1. 内核 `0024` 补丁
 
-- 新增 suniv tuning 寄存器定义（`0x2C/0x30/0x34`）。
-- `suniv_codec_init()` 在 probe/reset 之后写入：
-  - `0x2C = 0x44555556`
-  - `0x30 = 0x00000004`（触发校准）
-  - `0x34 = 0x10000000`
-- 新增用户态控件：
+新增用户态控件：
 
 ```text
 Headphone PA Enable
 ```
 
 直接控制 `HPPAEN`（`DAC_MIXER_CTRL` bit15），用于静音段关闭耳放。
+
+不包含 BIAS/DA16 校准写入：`0x30` 触发位在 probe 和播放中都不会自清零，
+而 boot ROM 已经把 `ADDA_TUNE/BIAS_CAL1` 写好，最终只保留可靠的 PA 电源控制。
 
 ### 2. `mp4play`
 
@@ -124,17 +120,24 @@ mp4play /mnt/sd/test-av.mp4
 - 数字静音段自动关闭 HP PA，底噪消失
 - 音乐/语音段正常
 
+## 实测结果
+
+- `tinymix set "Headphone PA Enable" 0` 后静音底噪消失
+- `mp4play /mnt/sd/test-av.mp4` 视频正常显示，不再 `display failed`
+- `audio-test` 不再报 tinymix 语法错误
+- `0x30` 校准触发位在 probe 和播放中都不自清零，最终补丁已移除该写入
+
 ## 已知限制
 
 - `Headphone PA Enable` 是普通 kcontrol，DAPM 在 PCM 启动时仍会把
   `HPPAEN` 置 1；播放器在流启动后按静音检测重新控制。
-- 如果校准后音乐播放时仍有明显“吱吱”声，基本是 Class D 输出级载波或
+- 音乐播放时如果仍有明显“吱吱”声，基本是 Class D 输出级载波或
   板级滤波问题。软件只能静音/关耳放，根治需要 LC/磁珠/耳机输出滤波。
 - 静音检测阈值 16/保持 500ms 是保守值，可按实际素材调整。
 
 ## 回滚
 
-删除 `0024-suniv-codec-hp-pa-and-bias.patch`，重新构建内核：
+删除 `0024-suniv-codec-hp-pa-control.patch`，重新构建内核：
 
 ```sh
 output/host/bin/host-make linux-dirclean

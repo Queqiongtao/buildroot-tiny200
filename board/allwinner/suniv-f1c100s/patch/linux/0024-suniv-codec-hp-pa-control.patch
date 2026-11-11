@@ -1,0 +1,32 @@
+From: Queqiongtao <467500670@qq.com>
+Subject: [PATCH] ASoC: sun4i-codec: expose suniv headphone PA enable
+
+The suniv F1C100s/F1C200s Class-D headphone output has an audible
+hiss/squeak even when the DAC is fed digital silence.  Clearing HPPAEN
+powers the output stage down and removes that noise.
+
+Expose HPPAEN as a "Headphone PA Enable" control so userspace can power
+the PA down across silent passages and bring it back when audio returns.
+
+An earlier attempt to trigger the BIAS/DA16 calibration at 0x30 was
+dropped: the trigger bit does not self-clear on this silicon, while the
+boot ROM already programs the ADDA_TUNE/BIAS_CAL1 values.  The PA power
+control is the reliable fix for the silent-scene noise.
+--- a/sound/soc/sunxi/sun4i-codec.c
++++ b/sound/soc/sunxi/sun4i-codec.c
+@@ -1395,6 +1395,15 @@
+ 		   SUNIV_CODEC_OM_DACA_CTRL,
+ 		   SUNIV_CODEC_OM_DACA_CTRL_LHPPAMUTE,
+ 		   SUNIV_CODEC_OM_DACA_CTRL_RHPPAMUTE, 1, 0),
++	/*
++	 * Direct control of the headphone PA enable (HPPAEN).  DAPM also
++	 * drives this bit when the playback path is powered; exposing it
++	 * lets userspace power the PA down across silent passages, which
++	 * removes the suniv Class-D output-stage idle noise.
++	 */
++	SOC_SINGLE("Headphone PA Enable",
++		   SUNIV_CODEC_OM_DACA_CTRL,
++		   SUNIV_CODEC_OM_DACA_CTRL_HPPAEN, 1, 0),
+ 	SOC_SINGLE_TLV("Line In Playback Volume",
+ 		       SUNIV_CODEC_ADC_ACTL, SUNIV_CODEC_ADC_LINEINVOL,
+ 		       0x7, 0, suniv_codec_out_mixer_pregain_scale),
