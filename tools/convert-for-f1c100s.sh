@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# convert-for-f1c100s.sh [--720p] input.mp4 [output.mp4]
+# convert-for-f1c100s.sh [--720p] [--fill] input.mp4 [output.mp4]
 #
 # Convert an arbitrary MP4 to the format the F1C100s player supports:
 #   H.264 Constrained Baseline, 30 fps, no B-frames, 1 reference frame,
@@ -9,16 +9,23 @@
 # Default output is 1024x600 (the panel size).  --720p produces 1280x720
 # for the maximum real-time decode resolution.
 #
+# By default the source aspect ratio is preserved and the output is padded
+# with black bars.  --fill scales to cover the target and crops the extra
+# edges, so the picture fills the screen but loses a little on the sides
+# (or top/bottom for a taller source).
+#
 set -eu
 
 usage()
 {
-	echo "usage: $0 [--720p] input.mp4 [output.mp4]" >&2
-	echo "  default output: <input>_f1c100s.mp4 (1024x600)" >&2
-	echo "  --720p        : <input>_720p.mp4     (1280x720)" >&2
+	echo "usage: $0 [--720p] [--fill] input.mp4 [output.mp4]" >&2
+	echo "  default output: <input>_f1c100s.mp4 (1024x600, padded)" >&2
+	echo "  --720p        : <input>_720p.mp4     (1280x720, padded)" >&2
+	echo "  --fill        : crop to fill instead of padding, suffix _fill" >&2
 }
 
 use_720p=0
+use_fill=0
 input=""
 output=""
 
@@ -26,6 +33,9 @@ for arg in "$@"; do
 	case "$arg" in
 	--720p|-7)
 		use_720p=1
+		;;
+	--fill|-f)
+		use_fill=1
 		;;
 	-h|--help)
 		usage
@@ -70,10 +80,12 @@ if [ -z "$output" ]; then
 	base=$(basename "$input")
 	stem=${base%.*}
 	if [ "$use_720p" = 1 ]; then
-		output="$dir/${stem}_720p.mp4"
+		suffix="_720p"
 	else
-		output="$dir/${stem}_f1c100s.mp4"
+		suffix="_f1c100s"
 	fi
+	[ "$use_fill" = 1 ] && suffix="${suffix}_fill"
+	output="$dir/${stem}${suffix}.mp4"
 fi
 
 if [ "$input" = "$output" ]; then
@@ -82,10 +94,18 @@ if [ "$input" = "$output" ]; then
 fi
 
 if [ "$use_720p" = 1 ]; then
-	scale="scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2"
+	if [ "$use_fill" = 1 ]; then
+		scale="scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1"
+	else
+		scale="scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1"
+	fi
 	level="3.1"
 else
-	scale="scale=1024:600:force_original_aspect_ratio=decrease,pad=1024:600:(ow-iw)/2:(oh-ih)/2"
+	if [ "$use_fill" = 1 ]; then
+		scale="scale=1024:600:force_original_aspect_ratio=increase,crop=1024:600,setsar=1"
+	else
+		scale="scale=1024:600:force_original_aspect_ratio=decrease,pad=1024:600:(ow-iw)/2:(oh-ih)/2,setsar=1"
+	fi
 	level="3.1"
 fi
 
