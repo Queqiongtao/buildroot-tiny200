@@ -1,0 +1,4 @@
+# Mount the SD card media partition at /mnt/sd on insert and detach it
+# on removal.  The helper is also called from S99sdcard at boot.
+KERNEL=="mmcblk0p1", SUBSYSTEM=="block", ACTION=="add", RUN+="/usr/bin/sdcard-mount"
+KERNEL=="mmcblk0p1", SUBSYSTEM=="block", ACTION=="remove", RUN+="/usr/bin/sdcard-umount"

@@ -1,0 +1,58 @@
+#!/bin/sh
+#
+# sdcard-mount -- mount the SD card media partition at /mnt/sd.
+#
+# Called from udev (hotplug) and from /etc/init.d/S99sdcard (boot
+# fallback).  Read-write because the card is also used to copy media
+# from a PC; the player itself opens files read-only.
+#
+set -u
+
+dev=/dev/mmcblk0p1
+mnt=/mnt/sd
+logger=/usr/bin/logger
+
+log()
+{
+	[ -x "$logger" ] && "$logger" -t sdcard "$*" 2>/dev/null || true
+}
+
+/bin/mkdir -p "$mnt"
+
+if [ ! -b "$dev" ]; then
+	log "$dev not present"
+	exit 0
+fi
+
+# Already mounted from this device?  udev can replay the add event and
+# the init script runs as a second fallback.
+if /bin/grep -q "^$dev $mnt " /proc/mounts; then
+	exit 0
+fi
+
+# A stale mount on the same directory (previous card, lazy unmount not
+# fully released, or a manual mount).  Drop it before remounting.
+if /bin/grep -q " $mnt " /proc/mounts; then
+	log "$mnt has a stale mount, detaching"
+	/bin/umount -l "$mnt" 2>/dev/null || true
+fi
+
+if /bin/mount -t vfat -o rw,noatime,iocharset=utf8 "$dev" "$mnt"; then
+	log "mounted $dev on $mnt (rw,utf8)"
+	exit 0
+fi
+
+# Older kernels without CONFIG_NLS_UTF8: still mount ASCII names.
+if /bin/mount -t vfat -o rw,noatime "$dev" "$mnt"; then
+	log "mounted $dev on $mnt (rw,no utf8)"
+	exit 0
+fi
+
+# Write-protected card / read-only switch: keep playback working.
+if /bin/mount -t vfat -o ro,noatime,iocharset=utf8 "$dev" "$mnt"; then
+	log "mounted $dev on $mnt (ro,utf8)"
+	exit 0
+fi
+
+log "mount $dev on $mnt failed"
+exit 1

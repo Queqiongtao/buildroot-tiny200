@@ -1,0 +1,26 @@
+#!/bin/sh
+#
+# Boot/shutdown fallback for the SD card automount.
+#
+# udev handles hotplug and the coldplug trigger in S10udev; this script
+# makes sure the card is mounted by the end of boot and flushed on a
+# clean shutdown.
+#
+case "$1" in
+start)
+	/usr/bin/sdcard-mount
+	;;
+stop)
+	/usr/bin/sdcard-umount
+	;;
+restart|reload)
+	/usr/bin/sdcard-umount
+	/usr/bin/sdcard-mount
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+	;;
+esac
+
+exit 0
