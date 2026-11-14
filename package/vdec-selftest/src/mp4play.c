@@ -752,7 +752,7 @@ static int display_frame(struct display *disp, struct vdec_ctx *vdec,
 }
 
 static int device_play(struct mp4_demux *m, int plane_index,
-		       struct audio_player *audio)
+		       struct audio_player *audio, unsigned int buf_override)
 {
 	struct h264_parser parser;
 	struct h264_dpb dpb;
@@ -801,6 +801,13 @@ static int device_play(struct mp4_demux *m, int plane_index,
 			cap_count = 6;
 		if (cap_count > cap_max)
 			cap_count = cap_max;
+		/*
+		 * Large 1080p buffers do not fit in the default 16 MiB CMA
+		 * with the automatic 6-buffer count.  Allow a manual lower
+		 * count for bring-up tests (the baseline DPB can work with 4).
+		 */
+		if (buf_override >= 4 && buf_override <= cap_max)
+			cap_count = buf_override;
 		reorder_depth = reorder;
 	}
 
@@ -950,7 +957,8 @@ out_vdec:
 /* Entry point                                                         */
 /* ------------------------------------------------------------------ */
 
-static int play_file(const char *path, int plane_index, int mute)
+static int play_file(const char *path, int plane_index, int mute,
+		     unsigned int buf_override)
 {
 	struct mp4_demux video;
 	struct audio_player audio;
@@ -976,7 +984,8 @@ static int play_file(const char *path, int plane_index, int mute)
 		}
 	}
 
-	rc = device_play(&video, plane_index, have_audio ? &audio : NULL);
+	rc = device_play(&video, plane_index, have_audio ? &audio : NULL,
+			 buf_override);
 
 	if (have_audio)
 		audio_close(&audio);
@@ -987,10 +996,11 @@ static int play_file(const char *path, int plane_index, int mute)
 static void usage(const char *name)
 {
 	fprintf(stderr,
-		"usage: %s [-p plane] [-m] [-l] file.mp4\n"
+		"usage: %s [-p plane] [-m] [-l] [-b buffers] file.mp4\n"
 		"  -p plane   DRM plane index (default 0 = primary)\n"
 		"  -m         mute / video only\n"
-		"  -l         loop playback until interrupted\n",
+		"  -l         loop playback until interrupted\n"
+		"  -b buffers override capture buffer count (4..9; for 1080p/CMA)\n",
 		name);
 }
 
@@ -999,12 +1009,13 @@ int main(int argc, char *argv[])
 	const char *input = NULL;
 	int plane_index = 0;
 	int mute = 0, loop = 0;
+	unsigned int buf_override = 0;
 	int opt, rc = 0;
 
 	signal(SIGINT, on_signal);
 	signal(SIGTERM, on_signal);
 
-	while ((opt = getopt(argc, argv, "p:mlh")) != -1) {
+	while ((opt = getopt(argc, argv, "p:mlhb:")) != -1) {
 		switch (opt) {
 		case 'p':
 			plane_index = atoi(optarg);
@@ -1014,6 +1025,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'l':
 			loop = 1;
+			break;
+		case 'b':
+			buf_override = (unsigned int)atoi(optarg);
 			break;
 		case 'h':
 			usage(argv[0]);
@@ -1030,7 +1044,7 @@ int main(int argc, char *argv[])
 	input = argv[optind];
 
 	do {
-		rc = play_file(input, plane_index, mute);
+		rc = play_file(input, plane_index, mute, buf_override);
 	} while (loop && rc == 0 && !g_stop);
 
 	return rc ? 1 : 0;

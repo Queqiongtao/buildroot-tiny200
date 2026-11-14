@@ -24,6 +24,7 @@
 - [变更记录 2026-11-09:suniv DEFE/frontend 显示修复](changes/2026-11-09-suniv-defe-frontend-display-fix.md)
 - [变更记录 2026-11-10:mp4play 播放器与 AAC 音频](changes/2026-11-10-mp4play-aac-audio.md)
 - [变更记录 2026-11-11:suniv codec 底噪、HP PA 控制与播放器修复](changes/2026-11-11-suniv-codec-hp-pa-noise.md)
+- [变更记录 2026-11-14:mp4play 1080p/720p 转码与 buffer 覆盖](changes/2026-11-14-mp4play-1080p-720p-test.md)
 
 ## 维护约定
 
