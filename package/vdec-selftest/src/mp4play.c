@@ -797,18 +797,32 @@ static int device_play(struct mp4_demux *m, int plane_index,
 		cap_count = sps0->vui_reorder_valid ?
 			(unsigned int)sps0->vui_max_dec_frame_buffering + 5 :
 			max_ref + reorder + 3;
+		unsigned int disp_w = m->width ? m->width : width;
+		unsigned int disp_h = m->height ? m->height : height;
+
 		if (cap_count < 6)
 			cap_count = 6;
 		if (cap_count > cap_max)
 			cap_count = cap_max;
 		/*
-		 * Large 1080p buffers do not fit in the default 16 MiB CMA
-		 * with the automatic 6-buffer count.  Allow a manual lower
-		 * count for bring-up tests (the baseline DPB can work with 4).
+		 * The board's default CMA is sized for 1024x600.  A 720p
+		 * stream still fits with four buffers, while the automatic
+		 * VUI-derived count (usually 7) can exhaust CMA after the
+		 * framebuffer has fragmented it.  Keep four as the automatic
+		 * choice above the panel size; -b still overrides it.
 		 */
+		if (!buf_override && (disp_w > 1024 || disp_h > 600) &&
+		    cap_count > 4)
+			cap_count = 4;
 		if (buf_override >= 4 && buf_override <= cap_max)
 			cap_count = buf_override;
 		reorder_depth = reorder;
+
+		if (disp_w > 1280 || disp_h > 720)
+			fprintf(stderr,
+				"warning: %ux%u is above the 720p real-time "
+				"capability; playback may be slow or fail\n",
+				disp_w, disp_h);
 	}
 
 	frame_dur = m->frame_duration_us ? m->frame_duration_us : 33333;
