@@ -97,11 +97,28 @@ struct display {
 	uint32_t crtc_id;
 	uint32_t plane_id;
 	unsigned int screen_w, screen_h;
+	unsigned int disp_w, disp_h;	/* container display dimensions */
+	unsigned int src_w, src_h;	/* DRM source rectangle */
+	unsigned int fb_w, fb_h;	/* DRM framebuffer dimensions */
+	int coded_fb;			/* full coded FB + padding-aware geometry */
+	int fill;			/* coded FB: scale to fill, clip padding */
 	int error_reported;
+	int geometry_logged;
 	uint32_t fb_ids[VDEC_MAX_CAP_BUFS];
 };
 
-static int display_open(struct display *d, struct vdec_ctx *v, int plane_index)
+static void display_close(struct display *d, struct vdec_ctx *v);
+
+static const char *display_mode_name(const struct display *d)
+{
+	if (!d->coded_fb)
+		return "visible";
+	return d->fill ? "coded-fill" : "coded";
+}
+
+static int display_open(struct display *d, struct vdec_ctx *v,
+			int plane_index, unsigned int disp_w,
+			unsigned int disp_h, int coded_fb, int fill)
 {
 	drmModeRes *res;
 	drmModePlaneRes *planes;
@@ -109,6 +126,20 @@ static int display_open(struct display *d, struct vdec_ctx *v, int plane_index)
 	unsigned int i;
 
 	memset(d, 0, sizeof(*d));
+	d->fd = -1;
+	d->coded_fb = coded_fb;
+	d->fill = fill;
+	d->disp_w = disp_w ? disp_w : v->cap_width;
+	d->disp_h = disp_h ? disp_h : v->cap_height;
+	if (d->disp_w > v->cap_width)
+		d->disp_w = v->cap_width;
+	if (d->disp_h > v->cap_height)
+		d->disp_h = v->cap_height;
+	d->src_w = coded_fb ? v->cap_width : d->disp_w;
+	d->src_h = coded_fb ? v->cap_height : d->disp_h;
+	d->fb_w = d->src_w;
+	d->fb_h = d->src_h;
+
 	d->fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
 	if (d->fd < 0) {
 		fprintf(stderr, "open /dev/dri/card0: %s\n", strerror(errno));
@@ -117,8 +148,12 @@ static int display_open(struct display *d, struct vdec_ctx *v, int plane_index)
 	drmSetClientCap(d->fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
 
 	res = drmModeGetResources(d->fd);
-	if (!res || !res->count_crtcs)
+	if (!res || !res->count_crtcs) {
+		if (res)
+			drmModeFreeResources(res);
+		display_close(d, v);
 		return -1;
+	}
 	d->crtc_id = res->crtcs[0];
 	crtc = drmModeGetCrtc(d->fd, d->crtc_id);
 	if (crtc) {
@@ -131,6 +166,7 @@ static int display_open(struct display *d, struct vdec_ctx *v, int plane_index)
 	planes = drmModeGetPlaneResources(d->fd);
 	if (!planes || (unsigned int)plane_index >= planes->count_planes) {
 		fprintf(stderr, "bad plane index %d\n", plane_index);
+		display_close(d, v);
 		return -1;
 	}
 	d->plane_id = planes->planes[plane_index];
@@ -145,6 +181,7 @@ static int display_open(struct display *d, struct vdec_ctx *v, int plane_index)
 		if (drmPrimeFDToHandle(d->fd, v->cap[i].dmabuf_fd, &handle) < 0) {
 			fprintf(stderr, "PrimeFDToHandle[%u]: %s\n", i,
 				strerror(errno));
+			display_close(d, v);
 			return -1;
 		}
 		handles[0] = handles[1] = handle;
@@ -153,45 +190,51 @@ static int display_open(struct display *d, struct vdec_ctx *v, int plane_index)
 		offsets[1] = v->cap_uv_offset;
 		modifiers[0] = modifiers[1] = DRM_FORMAT_MOD_ALLWINNER_TILED;
 
-		if (drmModeAddFB2WithModifiers(d->fd, v->cap_width,
-					       v->cap_height, DRM_FORMAT_NV12,
-					       handles, pitches, offsets,
-					       modifiers, &d->fb_ids[i],
+		if (drmModeAddFB2WithModifiers(d->fd, d->fb_w, d->fb_h,
+					       DRM_FORMAT_NV12, handles, pitches,
+					       offsets, modifiers, &d->fb_ids[i],
 					       DRM_MODE_FB_MODIFIERS) < 0) {
-			fprintf(stderr, "AddFB2[%u]: %s\n", i, strerror(errno));
+			fprintf(stderr, "AddFB2[%u] %ux%u: %s\n", i,
+				d->fb_w, d->fb_h, strerror(errno));
+			display_close(d, v);
 			return -1;
 		}
 	}
 
-	printf("display: plane %u crtc %u screen %ux%u\n", d->plane_id,
-	       d->crtc_id, d->screen_w, d->screen_h);
+	printf("display: plane %u crtc %u screen %ux%u fb %ux%u src %ux%u (%s FB)\n",
+	       d->plane_id, d->crtc_id, d->screen_w, d->screen_h,
+	       d->fb_w, d->fb_h, d->src_w, d->src_h, display_mode_name(d));
 	return 0;
 }
 
 static int display_show(struct display *d, struct vdec_ctx *v, int slot)
 {
-	unsigned int src_w = v->cap_width, src_h = v->cap_height;
-	unsigned int dst_w = src_w, dst_h = src_h;
+	unsigned int disp_w = d->disp_w, disp_h = d->disp_h;
+	unsigned int src_w = d->src_w, src_h = d->src_h;
+	unsigned int dst_w = disp_w, dst_h = disp_h;
 	unsigned int dst_x = 0, dst_y = 0;
+	unsigned int plane_w, plane_h;
+
+	(void)v;
 
 	/*
-	 * Keep the full coded size as the frontend source (cropping tiled
-	 * NV12 breaks the chroma layout).  Fit the display rectangle while
-	 * preserving aspect ratio; the CRTC background fills the rest.
+	 * Fit the *container* display size to the panel, not the coded size.
+	 * The coded size may include bottom/right macroblock padding (e.g.
+	 * 1024x600 arrives as 1024x608), which previously produced wrong
+	 * pillarboxes and asymmetric letterboxes.
 	 */
-	if (d->screen_w && d->screen_h && src_w && src_h) {
-		uint64_t by_w = (uint64_t)d->screen_w * src_h;
-		uint64_t by_h = (uint64_t)d->screen_h * src_w;
+	if (d->screen_w && d->screen_h && disp_w && disp_h) {
+		uint64_t by_w = (uint64_t)d->screen_w * disp_h;
+		uint64_t by_h = (uint64_t)d->screen_h * disp_w;
 
-		/* Pick the smaller scale so the rectangle always fits. */
 		if (by_w <= by_h) {
 			dst_w = d->screen_w;
-			dst_h = (unsigned int)((uint64_t)src_h * d->screen_w /
-					       src_w);
+			dst_h = (unsigned int)((uint64_t)disp_h * d->screen_w /
+					       disp_w);
 		} else {
 			dst_h = d->screen_h;
-			dst_w = (unsigned int)((uint64_t)src_w * d->screen_h /
-					       src_h);
+			dst_w = (unsigned int)((uint64_t)disp_w * d->screen_h /
+					       disp_h);
 		}
 		if (dst_w < 1)
 			dst_w = 1;
@@ -201,16 +244,76 @@ static int display_show(struct display *d, struct vdec_ctx *v, int slot)
 		dst_y = (d->screen_h - dst_h) / 2;
 	}
 
+	plane_w = dst_w;
+	plane_h = dst_h;
+
+	if (d->coded_fb && !d->fill && disp_w && disp_h) {
+		/*
+		 * The FB still contains the coded padding below/right of the
+		 * visible picture.  Keep the visible content centered and
+		 * shrink it by at most a few pixels so the whole padded plane
+		 * fits on screen; the padding then falls into the bottom/right
+		 * black bar.
+		 */
+		while (dst_w > 1 && dst_h > 1) {
+			plane_w = (unsigned int)((uint64_t)src_w * dst_w /
+						 disp_w);
+			plane_h = (unsigned int)((uint64_t)src_h * dst_h /
+						 disp_h);
+			if (plane_w < 1)
+				plane_w = 1;
+			if (plane_h < 1)
+				plane_h = 1;
+			dst_x = (d->screen_w - dst_w) / 2;
+			dst_y = (d->screen_h - dst_h) / 2;
+			if (dst_x + plane_w <= d->screen_w &&
+			    dst_y + plane_h <= d->screen_h)
+				break;
+			dst_w--;
+			dst_h = (unsigned int)((uint64_t)disp_h * dst_w /
+					       disp_w);
+			if (dst_h < 1)
+				dst_h = 1;
+		}
+	}
+
+	if (d->coded_fb && d->fill && disp_w && disp_h) {
+		/*
+		 * Fill mode: keep the coded padding in the plane but let it
+		 * extend past the bottom/right edge.  The display controller
+		 * clips it, so the visible content gets the exact geometry
+		 * computed above instead of being shrunk to fit the padding.
+		 */
+		plane_w = (unsigned int)(((uint64_t)src_w * dst_w +
+					  disp_w - 1) / disp_w);
+		plane_h = (unsigned int)(((uint64_t)src_h * dst_h +
+					  disp_h - 1) / disp_h);
+		if (plane_w < 1)
+			plane_w = 1;
+		if (plane_h < 1)
+			plane_h = 1;
+	}
+
+	if (!d->geometry_logged) {
+		fprintf(stderr,
+			"display: src %ux%u -> content %ux%u+%u+%u, plane %ux%u (%s FB, screen %ux%u)\n",
+			src_w, src_h, dst_w, dst_h, dst_x, dst_y,
+			plane_w, plane_h, display_mode_name(d),
+			d->screen_w, d->screen_h);
+		d->geometry_logged = 1;
+	}
+
 	{
 		int ret;
 
 		ret = drmModeSetPlane(d->fd, d->plane_id, d->crtc_id,
 				      d->fb_ids[slot], 0, dst_x, dst_y,
-				      dst_w, dst_h, 0, 0,
+				      plane_w, plane_h, 0, 0,
 				      src_w << 16, src_h << 16);
 		if (ret < 0 && !d->error_reported) {
 			fprintf(stderr, "SetPlane %ux%u+%u+%u: %s\n",
-				dst_w, dst_h, dst_x, dst_y, strerror(errno));
+				plane_w, plane_h, dst_x, dst_y,
+				strerror(errno));
 			d->error_reported = 1;
 		}
 		return ret;
@@ -752,7 +855,8 @@ static int display_frame(struct display *disp, struct vdec_ctx *vdec,
 }
 
 static int device_play(struct mp4_demux *m, int plane_index,
-		       struct audio_player *audio, unsigned int buf_override)
+		       struct audio_player *audio, unsigned int buf_override,
+		       int coded_fb, int fill)
 {
 	struct h264_parser parser;
 	struct h264_dpb dpb;
@@ -761,6 +865,7 @@ static int device_play(struct mp4_demux *m, int plane_index,
 	const struct h264_sps *sps0;
 	char video_path[32], media_path[32];
 	unsigned int width, height, cap_count, max_ref, max_frame_num = 16;
+	unsigned int disp_w, disp_h;
 	unsigned int reorder_depth = 2;
 	unsigned int i, decode_count = 0, display_count = 0;
 	unsigned int frame_dur;
@@ -797,8 +902,13 @@ static int device_play(struct mp4_demux *m, int plane_index,
 		cap_count = sps0->vui_reorder_valid ?
 			(unsigned int)sps0->vui_max_dec_frame_buffering + 5 :
 			max_ref + reorder + 3;
-		unsigned int disp_w = m->width ? m->width : width;
-		unsigned int disp_h = m->height ? m->height : height;
+		disp_w = m->width ? m->width : width;
+		disp_h = m->height ? m->height : height;
+
+		if (disp_w > width)
+			disp_w = width;
+		if (disp_h > height)
+			disp_h = height;
 
 		if (cap_count < 6)
 			cap_count = 6;
@@ -828,8 +938,9 @@ static int device_play(struct mp4_demux *m, int plane_index,
 	frame_dur = m->frame_duration_us ? m->frame_duration_us : 33333;
 	(void)frame_dur;
 
-	printf("video: %ux%u max_ref=%u cap_bufs=%u samples=%u\n", width,
-	       height, max_ref, cap_count, m->samples_count);
+	printf("video: %ux%u display %ux%u max_ref=%u cap_bufs=%u samples=%u\n",
+	       width, height, disp_w, disp_h, max_ref, cap_count,
+	       m->samples_count);
 
 	if (vdec_find_device(video_path, sizeof(video_path), media_path,
 			     sizeof(media_path)) < 0)
@@ -850,8 +961,22 @@ static int device_play(struct mp4_demux *m, int plane_index,
 		goto out_vdec;
 	}
 
-	if (display_open(&disp, &vdec, plane_index) < 0)
-		goto out_vdec;
+	if (display_open(&disp, &vdec, plane_index, disp_w, disp_h,
+			 coded_fb, fill) < 0) {
+		if (coded_fb)
+			goto out_vdec;
+		/*
+		 * A display-sized FB can be rejected when the decoder output
+		 * has a non-32-aligned visible height.  Fall back to the full
+		 * coded FB, which is always accepted, and keep the geometry
+		 * padding-aware in display_show().
+		 */
+		fprintf(stderr,
+			"display: visible-size FB failed, retrying with coded-size FB\n");
+		if (display_open(&disp, &vdec, plane_index, disp_w, disp_h,
+				 1, 0) < 0)
+			goto out_vdec;
+	}
 
 	h264_dpb_init(&dpb, cap_count, max_ref, max_frame_num, reorder_depth);
 
@@ -972,7 +1097,7 @@ out_vdec:
 /* ------------------------------------------------------------------ */
 
 static int play_file(const char *path, int plane_index, int mute,
-		     unsigned int buf_override)
+		     unsigned int buf_override, int coded_fb, int fill)
 {
 	struct mp4_demux video;
 	struct audio_player audio;
@@ -999,7 +1124,7 @@ static int play_file(const char *path, int plane_index, int mute,
 	}
 
 	rc = device_play(&video, plane_index, have_audio ? &audio : NULL,
-			 buf_override);
+			 buf_override, coded_fb, fill);
 
 	if (have_audio)
 		audio_close(&audio);
@@ -1010,11 +1135,14 @@ static int play_file(const char *path, int plane_index, int mute,
 static void usage(const char *name)
 {
 	fprintf(stderr,
-		"usage: %s [-p plane] [-m] [-l] [-b buffers] file.mp4\n"
+		"usage: %s [-p plane] [-m] [-l] [-b buffers] [-C|-V|-F] file.mp4\n"
 		"  -p plane   DRM plane index (default 0 = primary)\n"
 		"  -m         mute / video only\n"
 		"  -l         loop playback until interrupted\n"
-		"  -b buffers override capture buffer count (4..9; for 1080p/CMA)\n",
+		"  -b buffers override capture buffer count (4..9; for 1080p/CMA)\n"
+		"  -C         coded-size FB, shrink padding into the black bars (fallback)\n"
+		"  -V         visible-size FB (experimental; tiled NV12 chroma can break)\n"
+		"  -F         coded-size FB, scale to fill and let the display clip padding (default)\n",
 		name);
 }
 
@@ -1022,14 +1150,14 @@ int main(int argc, char *argv[])
 {
 	const char *input = NULL;
 	int plane_index = 0;
-	int mute = 0, loop = 0;
+	int mute = 0, loop = 0, coded_fb = 1, fill = 1;
 	unsigned int buf_override = 0;
 	int opt, rc = 0;
 
 	signal(SIGINT, on_signal);
 	signal(SIGTERM, on_signal);
 
-	while ((opt = getopt(argc, argv, "p:mlhb:")) != -1) {
+	while ((opt = getopt(argc, argv, "p:mlhb:CVF")) != -1) {
 		switch (opt) {
 		case 'p':
 			plane_index = atoi(optarg);
@@ -1042,6 +1170,18 @@ int main(int argc, char *argv[])
 			break;
 		case 'b':
 			buf_override = (unsigned int)atoi(optarg);
+			break;
+		case 'C':
+			coded_fb = 1;
+			fill = 0;
+			break;
+		case 'V':
+			coded_fb = 0;
+			fill = 0;
+			break;
+		case 'F':
+			coded_fb = 1;
+			fill = 1;
 			break;
 		case 'h':
 			usage(argv[0]);
@@ -1058,7 +1198,8 @@ int main(int argc, char *argv[])
 	input = argv[optind];
 
 	do {
-		rc = play_file(input, plane_index, mute, buf_override);
+		rc = play_file(input, plane_index, mute, buf_override,
+			       coded_fb, fill);
 	} while (loop && rc == 0 && !g_stop);
 
 	return rc ? 1 : 0;
