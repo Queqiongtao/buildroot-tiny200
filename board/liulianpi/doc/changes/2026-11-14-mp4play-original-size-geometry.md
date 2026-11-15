@@ -47,54 +47,63 @@ disp_h = m->height ? m->height : height;
 - 居中坐标 `dst_x/dst_y`
 - 左右/上下黑边
 
-### 2. 默认保留完整编码 source
+### 2. 默认使用 visible FB
 
-H.264 的编码高度按宏块对齐，VE 输出的是 tiled NV12。之前实测把 source
-高度从 608 裁到 600 会破坏 tiled chroma 布局，出现整屏偏红。因此默认：
+之前出现过“整屏偏红”，组合是：
 
 ```text
-source = 完整编码尺寸（如 1024x608）
-framebuffer = 完整编码尺寸
+framebuffer 高度 = 608（完整编码高度）
+source 高度      = 600（裁到面板高度）
 ```
 
-不用 source 裁剪。
+这时 frontend 按 600 行读一个按 608 行组织的 tiled chroma 平面，颜色错位。
 
-### 3. 三种显示模式
-
-默认模式：`-F`（coded fill）
+本次改为按显示尺寸创建 FB 后，FB 和 source 的高度一致：
 
 ```text
-source  = 完整编码尺寸
-content = 按显示尺寸算出的内容矩形
-plane   = 内容矩形按 coding/display 比例放大
-padding 超出屏幕的部分由 DEFE 裁掉
+source      = 显示尺寸（如 1024x600）
+framebuffer = 显示尺寸（如 1024x600）
+```
+
+DRM tiled NV12 的 chroma 高度按 300 计算，和 source 匹配。实机验证
+chroma 正常，没有红屏。因此默认使用 visible FB。
+
+### 3. 显示模式
+
+默认：`-V`（visible FB）
+
+```text
+source  = 容器显示尺寸
+content = 容器显示尺寸按比例适配屏幕
+plane   = content 矩形
 ```
 
 效果：
 
-- 可见内容比例正确
-- padding 不参与可见区域
-- 黑边对称
-- 1024x600 可以铺满 1024x600
+- 1024x600 铺满 1024x600
+- 720p 显示 1024x576，上下各 12px
+- 4:3 显示 800x600，左右各 112px
+- 不依赖 DEFE 裁剪 padding
 
 安全回退：`-C`（coded shrink）
 
 ```text
+source = 完整编码尺寸
 plane 整体缩到屏幕内，padding 落进底部/右侧黑边
 ```
 
 代价：1024x600 内容约 1003x586，4:3 内容会明显变小，但完全不依赖裁剪。
 
-实验模式：`-V`（visible FB）
+回退对比：`-F`（coded fill）
 
 ```text
-按显示尺寸创建 FB，source 也裁到显示尺寸
+source  = 完整编码尺寸
+plane   = content 矩形按 coding/display 比例放大
+padding 超出屏幕的部分由 DEFE 裁掉
 ```
 
-这是最直接的方案，但对非 32 对齐高度（600、240）可能再次触发 tiled
-chroma 异常，仅用于实机验证。
-
-如果 `-V` 创建 FB 失败，会自动重试 `-C`。
+visible FB 创建失败时（例如 AddFB2 拒绝非 32 对齐高度），自动重试
+coded fill。
 
 ### 4. 调试输出
 
@@ -102,22 +111,22 @@ chroma 异常，仅用于实机验证。
 
 ```text
 video: 1280x736 display 1280x720 max_ref=... cap_bufs=...
-display: plane ... screen 1024x600 fb 1280x736 src 1280x736 (coded-fill FB)
-display: src 1280x736 -> content 1024x576+0+12, plane 1024x589 (coded-fill FB, screen 1024x600)
+display: plane ... screen 1024x600 fb 1280x720 src 1280x720 (visible FB)
+display: src 1280x720 -> content 1024x576+0+12, plane 1024x576 (visible FB, screen 1024x600)
 ```
 
 ## 预期几何
 
-默认 `-F`：
+默认 `-V`：
 
 | 显示尺寸 | 编码尺寸 | 内容矩形 | 黑边 |
 | --- | --- | --- | --- |
-| 1024x600 | 1024x608 | 1024x600+0+0 | 无，底部 8 行 padding 被裁 |
+| 1024x600 | 1024x608 | 1024x600+0+0 | 无 |
 | 1280x720 | 1280x736 | 1024x576+0+12 | 上下各 12 |
 | 1920x1080 | 1920x1088 | 1024x576+0+12 | 上下各 12 |
 | 320x240 | 320x256 | 800x600+112+0 | 左右各 112 |
 | 640x480 | 640x480 | 800x600+112+0 | 左右各 112 |
-| 1920x816 (2.35:1) | 1920x1088 | 1024x435+0+82 | 上下约 82 |
+| 1920x816 (2.35:1) | 1920x832 | 1024x435+0+82 | 上下约 82 |
 
 `-C` 安全模式：
 
@@ -132,20 +141,19 @@ display: src 1280x736 -> content 1024x576+0+12, plane 1024x589 (coded-fill FB, s
 烧录后：
 
 ```sh
-# 默认 coded fill
-mp4play /mnt/sd/VID_20261102_223149_f1c100s.mp4
+# 默认 visible FB
+mp4play /mnt/sd/geometry-tests/test-1024x600.mp4
+mp4play /mnt/sd/geometry-tests/test-1280x720.mp4
+mp4play /mnt/sd/geometry-tests/test-320x240.mp4
 
-# 安全缩小
-mp4play -C /mnt/sd/VID_20261102_223149_f1c100s.mp4
+# 宽度 padding：854 显示宽，864 编码宽
+mp4play /mnt/sd/geometry-tests/test-854x480.mp4
 
-# 720p
-mp4play /mnt/sd/VID_20261102_223149_720p.mp4
+# 安全缩小对比
+mp4play -C /mnt/sd/geometry-tests/test-1024x600.mp4
 
-# 4:3 / 编码高度 256
-mp4play /mnt/sd/test-bframes.mp4
-
-# 实验 visible FB
-mp4play -V /mnt/sd/VID_20261102_223149_f1c100s.mp4
+# coded fill 对比
+mp4play -F /mnt/sd/geometry-tests/test-1024x600.mp4
 ```
 
 重点检查：
@@ -153,15 +161,25 @@ mp4play -V /mnt/sd/VID_20261102_223149_f1c100s.mp4
 1. 1024x600 是否铺满，没有左右黑边
 2. 720p 上下黑边是否各 12px
 3. 320x240 是否 800x600 居中，左右各 112px
-4. 默认模式底部是否有 padding 残留/错位（验证 DEFE 是否裁剪超出屏幕的 plane）
-5. `-V` 是否出现红屏/彩屏（预期非 32 对齐高度可能异常）
+4. 854x480 右侧编码 padding 是否被裁掉
+5. `-C` 是否仍能作为安全回退
 
-如果默认模式底部出现错位，改用 `-C` 作为默认；如果 `-V` 正常，可以再评估
-是否用 visible FB。
+## 实机验证
+
+2026-11-15，1024x600 面板：
+
+- 默认 visible FB 显示正常
+- `test-1024x600.mp4` 铺满，红框四边贴边
+- `test-1280x720.mp4` 上下各 12px，无左右黑边
+- `test-320x240.mp4` 800x600 居中，左右各 112px
+- visible FB 的 tiled NV12 chroma 正常，没有红屏
+- coded fill / coded shrink 模式也正常
+- `test-1024x600-embedded-16x9.mp4` 的上下 12px 黑边来自源文件
+- 不需要修改 DISSIZE 的内核补丁
 
 ## 已知限制
 
-- 依赖 DEFE 裁剪超出屏幕的 plane；`-C` 不需要裁剪，作为回退
+- `-F` 回退依赖 DEFE 裁剪超出屏幕的 plane；`-C` 不需要裁剪
 - 不处理旋转元数据；转码脚本会把旋转烘进画面
 - 1080p 仍不是实时支持格式
 

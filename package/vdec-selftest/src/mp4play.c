@@ -968,13 +968,13 @@ static int device_play(struct mp4_demux *m, int plane_index,
 		/*
 		 * A display-sized FB can be rejected when the decoder output
 		 * has a non-32-aligned visible height.  Fall back to the full
-		 * coded FB, which is always accepted, and keep the geometry
-		 * padding-aware in display_show().
+		 * coded FB in fill mode, which is always accepted and keeps
+		 * the visible content geometry exact.
 		 */
 		fprintf(stderr,
-			"display: visible-size FB failed, retrying with coded-size FB\n");
+			"display: visible-size FB failed, retrying with coded-fill FB\n");
 		if (display_open(&disp, &vdec, plane_index, disp_w, disp_h,
-				 1, 0) < 0)
+				 1, 1) < 0)
 			goto out_vdec;
 	}
 
@@ -1140,9 +1140,9 @@ static void usage(const char *name)
 		"  -m         mute / video only\n"
 		"  -l         loop playback until interrupted\n"
 		"  -b buffers override capture buffer count (4..9; for 1080p/CMA)\n"
+		"  -V         visible-size FB (default; exact display-size crop)\n"
 		"  -C         coded-size FB, shrink padding into the black bars (fallback)\n"
-		"  -V         visible-size FB (experimental; tiled NV12 chroma can break)\n"
-		"  -F         coded-size FB, scale to fill and let the display clip padding (default)\n",
+		"  -F         coded-size FB, scale to fill and let the display clip padding (fallback)\n",
 		name);
 }
 
@@ -1150,7 +1150,7 @@ int main(int argc, char *argv[])
 {
 	const char *input = NULL;
 	int plane_index = 0;
-	int mute = 0, loop = 0, coded_fb = 1, fill = 1;
+	int mute = 0, loop = 0, coded_fb = 0, fill = 0;
 	unsigned int buf_override = 0;
 	int opt, rc = 0;
 
