@@ -229,12 +229,12 @@ static int display_show(struct display *d, struct vdec_ctx *v, int slot)
 
 		if (by_w <= by_h) {
 			dst_w = d->screen_w;
-			dst_h = (unsigned int)((uint64_t)disp_h * d->screen_w /
-					       disp_w);
+			dst_h = (unsigned int)(((uint64_t)disp_h * d->screen_w +
+						disp_w / 2) / disp_w);
 		} else {
 			dst_h = d->screen_h;
-			dst_w = (unsigned int)((uint64_t)disp_w * d->screen_h /
-					       disp_h);
+			dst_w = (unsigned int)(((uint64_t)disp_w * d->screen_h +
+						disp_h / 2) / disp_h);
 		}
 		if (dst_w < 1)
 			dst_w = 1;
