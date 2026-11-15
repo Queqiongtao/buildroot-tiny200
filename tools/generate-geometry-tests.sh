@@ -5,7 +5,7 @@
 # Generate H.264 Baseline + AAC-LC test clips for checking mp4play display
 # geometry on the 1024x600 panel.  Every clip has a red border on the very
 # edge of its display rectangle, a green border just inside it, a grid,
-# corner/center labels and a short 440 Hz tone.
+# edge/center labels and a short 440/660 Hz tone.
 #
 # Expected on the panel:
 #

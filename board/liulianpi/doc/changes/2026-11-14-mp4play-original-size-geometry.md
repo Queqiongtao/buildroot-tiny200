@@ -181,6 +181,7 @@ mp4play -F /mnt/sd/geometry-tests/test-1024x600.mp4
 - `test-1024x600.mp4` 铺满，红框四边贴边
 - `test-1280x720.mp4` 上下各 12px，无左右黑边
 - `test-320x240.mp4` 800x600 居中，左右各 112px
+- `test-854x480.mp4` 右侧编码 padding 裁剪正常，内容 1024x576+0+12
 - visible FB 的 tiled NV12 chroma 正常，没有红屏
 - coded fill / coded shrink 模式也正常
 - `test-1024x600-embedded-16x9.mp4` 的上下 12px 黑边来自源文件
